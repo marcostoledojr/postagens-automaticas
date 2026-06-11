@@ -109,7 +109,7 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
       const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, exemplos)
 
       // 3. Gera a imagem
-      const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto)
+      const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
       // 4. Salva no banco como pendente
       const { error } = await supabase.from('posts').insert({
