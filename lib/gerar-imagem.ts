@@ -42,20 +42,20 @@ export async function gerarImagem(
 
     if (!res.ok) {
       const err = await res.text()
-      throw new Error(`fal.ai error: ${res.status} - ${err}`)
+      throw new Error(`fal.ai error ${res.status}: ${err}`)
     }
 
     const data = await res.json()
     const imageUrl = data.images?.[0]?.url
 
-    if (!imageUrl) throw new Error('Nenhuma imagem retornada pelo fal.ai')
+    if (!imageUrl) throw new Error(`fal.ai sem imagem na resposta: ${JSON.stringify(data)}`)
 
     return { url: imageUrl, prompt }
-  } catch (err) {
-    console.error('Erro ao gerar imagem:', err)
+  } catch (err: any) {
+    console.error('[IMAGEM] Erro fal.ai:', err?.message ?? err)
     // Fallback: imagem com texto
     return {
-      url: `https://placehold.co/1200x627/1e3a8a/white?text=${encodeURIComponent(tema.slice(0, 30))}`,
+      url: `https://placehold.co/1200x627/1e3a8a/white?text=${encodeURIComponent(tema.slice(0, 30))}&erroImagem=${encodeURIComponent(err?.message?.slice(0,80) ?? 'erro')}`,
       prompt,
     }
   }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gerarPostsParaAmanha } from '@/lib/motor-geracao'
 
+export const maxDuration = 60 // segundos (Vercel hobby suporta até 60s)
+
 export async function GET() {
   try {
     const resultado = await gerarPostsParaAmanha({ diasAFrente: 1 })
