@@ -156,6 +156,77 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
 }
 
 /**
+ * Gera exatamente 1 post por tema ativo (para testes e resets)
+ * Agenda todos para amanhã em horários sequenciais
+ */
+export async function gerarUmPorTema(): Promise<{
+  gerados: number
+  erros: number
+  detalhes: any[]
+}> {
+  const supabase = createClient()
+  const detalhes: any[] = []
+  let gerados = 0
+  let erros = 0
+
+  const { data: temas } = await supabase
+    .from('temas')
+    .select('*')
+    .eq('ativo', true)
+    .order('nome')
+
+  if (!temas || temas.length === 0) {
+    return { gerados: 0, erros: 0, detalhes: [{ erro: 'Nenhum tema ativo' }] }
+  }
+
+  const { data: configs } = await supabase.from('configuracoes').select('chave, valor')
+  const configMap = Object.fromEntries((configs ?? []).map(c => [c.chave, c.valor]))
+  const instrucaoBase: string = configMap['instrucoes_gerais'] ?? ''
+
+  const amanha = addDays(new Date(), 1)
+  const horarios = ['09:00', '11:00', '13:00', '15:00', '17:00']
+
+  for (let i = 0; i < temas.length; i++) {
+    const tema = temas[i]
+    const horario = horarios[i % horarios.length]
+    const [hh, mm] = horario.split(':').map(Number)
+    const dataSlot = setSeconds(setMinutes(setHours(amanha, hh), mm), 0)
+
+    try {
+      console.log(`[gerarUmPorTema] Tema: ${tema.nome}`)
+      const fontes = await buscarTema(tema.nome, tema.objetivo)
+      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [])
+      const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
+
+      const { error } = await supabase.from('posts').insert({
+        tema_id: tema.id,
+        tema_nome: tema.nome,
+        texto: postGerado.texto,
+        imagem_url: imagem.url,
+        imagem_prompt: imagem.prompt,
+        hashtags: postGerado.hashtags,
+        fontes_pesquisa: fontes,
+        status: 'pendente',
+        data_agendada: dataSlot.toISOString(),
+        horario_publicacao: horario,
+      })
+
+      if (error) throw error
+
+      gerados++
+      detalhes.push({ tema: tema.nome, horario, status: 'ok' })
+      await sleep(2000)
+    } catch (err: any) {
+      erros++
+      detalhes.push({ tema: tema.nome, horario, status: 'erro', erro: err.message })
+      console.error(`[gerarUmPorTema] Erro ${tema.nome}:`, err)
+    }
+  }
+
+  return { gerados, erros, detalhes }
+}
+
+/**
  * Escolhe qual tema usar para um dado slot
  * Respeita a frequência configurada de cada tema
  */

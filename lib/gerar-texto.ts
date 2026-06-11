@@ -112,8 +112,7 @@ ESTRUTURA OBRIGATÓRIA:
 2. DESENVOLVIMENTO: parágrafos curtos de duas a quatro linhas. Contexto e dor real que o público reconhece.
 3. VIRADA: onde o insight ou posicionamento da Oficina1 entra com naturalidade, nunca como argumento de venda explícito.
 4. CONCLUSÃO: a última frase deve ser a mais forte do post. Nunca terminar no vago. Provoca reflexão ou ação.
-5. ASSINATURA: Marcos Toledo | Head Comercial | Oficina1
-6. HASHTAGS: entre quatro e seis, relevantes, com acentos corretos em português
+5. HASHTAGS: entre quatro e seis, relevantes, com acentos corretos em português
 
 NUNCA USAR: linguagem de volume, ticket, chamado, commodity, "horas de consultoria", "suporte técnico". Sempre falar em segurança operacional, visibilidade de dados, continuidade de negócio e parceria estratégica.
 
@@ -124,8 +123,8 @@ REVISÃO INTERNA ANTES DE ESCREVER:
 - Alguma frase contradiz o posicionamento boutique ou soa como commodity?`
 
   const tipoInstrucao = tipo === 'comercial'
-    ? `\n\nTIPO DE POST — COMERCIAL OFICINA1:\nGera negócio diretamente. Fala de dores reais do Protheus, soluções da Oficina1, cases genéricos. Termina com CTA leve para DM ou comentário com palavra-chave ("Me manda uma DM" ou "Comenta X aqui"). A Oficina1 aparece naturalmente como referência, não como anúncio.`
-    : `\n\nTIPO DE POST — AUTORIDADE PESSOAL DO MARCOS:\nConstrói marca pessoal. Fala de liderança, IA, mercado, reflexões sobre carreira e negócios. Sem apelo comercial explícito. A Oficina1 aparece apenas na assinatura. Tom reflexivo e provocador.`
+    ? `\n\nTIPO DE POST — COMERCIAL OFICINA1:\nGera negócio diretamente. Fala de dores reais do Protheus, soluções da Oficina1, cases genéricos. Mencione @Oficina1 naturalmente quando a empresa for protagonista da solução ou insight. Termina com CTA leve para DM ou comentário com palavra-chave ("Me manda uma DM" ou "Comenta X aqui"). NÃO inclua assinatura no final.`
+    : `\n\nTIPO DE POST — AUTORIDADE PESSOAL DO MARCOS:\nConstrói marca pessoal. Fala de liderança, IA, mercado, reflexões sobre carreira e negócios. Sem apelo comercial explícito. A Oficina1 NÃO aparece no texto. Tom reflexivo e provocador. NÃO inclua assinatura no final.`
 
   const exemplosTexto = exemplos.length > 0
     ? `\n\nEXEMPLOS DE POSTS APROVADOS (replique o estilo, nunca o conteúdo):\n${
@@ -157,7 +156,7 @@ IMPORTANTE:
 - Escreva APENAS o post completo, do gancho às hashtags
 - Não adicione comentários, explicações ou notas antes ou depois
 - O post deve parecer escrito por Marcos, nunca por uma IA
-- Inclua a assinatura "Marcos Toledo | Head Comercial | Oficina1" antes das hashtags
+- NÃO inclua assinatura no final do post
 - Coloque as hashtags na última linha, separadas por espaço`
 }
 
