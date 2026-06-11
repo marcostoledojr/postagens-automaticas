@@ -1,38 +1,32 @@
-import { NextResponse } from 'next/server'
+/**
+ * POST /api/teste-imagem
+ * Gera uma imagem de teste sem salvar no banco.
+ * Usado para validar qualidade antes de gerar posts reais.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { gerarImagem } from '@/lib/gerar-imagem'
 
 export const maxDuration = 60
 
-export async function GET() {
-  const apiKey = process.env.FAL_API_KEY
-
-  if (!apiKey) {
-    return NextResponse.json({ erro: 'FAL_API_KEY não encontrada nas env vars' })
-  }
-
+export async function POST(req: NextRequest) {
   try {
-    const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: 'professional LinkedIn post image, modern office, clean design',
-        image_size: 'landscape_16_9',
-        num_inference_steps: 4,
-        num_images: 1,
-      }),
-    })
+    const { tema, texto, tipo } = await req.json()
+    if (!tema) return NextResponse.json({ erro: 'tema é obrigatório' }, { status: 400 })
 
-    const body = await res.text()
+    const tipoFinal: 'comercial' | 'autoridade' = tipo === 'autoridade' ? 'autoridade' : 'comercial'
+    const textoFinal = texto || `Post sobre: ${tema}`
 
-    return NextResponse.json({
-      status: res.status,
-      ok: res.ok,
-      resposta: body.slice(0, 500),
-      keyPrimeiros8: apiKey.slice(0, 8) + '...',
-    })
+    const resultado = await gerarImagem(tema, `Teste para: ${tema}`, textoFinal, tipoFinal)
+
+    return NextResponse.json({ ok: true, url: resultado.url, prompt: resultado.prompt, tipo: resultado.tipo })
   } catch (err: any) {
-    return NextResponse.json({ erro: err.message })
+    console.error('[TESTE-IMAGEM]', err)
+    return NextResponse.json({ erro: err.message }, { status: 500 })
   }
+}
+
+// Mantém GET básico de health check
+export async function GET() {
+  return NextResponse.json({ ok: true, endpoint: '/api/teste-imagem', method: 'POST', campos: ['tema', 'texto', 'tipo'] })
 }

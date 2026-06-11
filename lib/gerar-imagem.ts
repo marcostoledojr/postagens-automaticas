@@ -1,11 +1,12 @@
 /**
- * Geração de imagens via fal.ai (Flux Schnell)
- * Identidade visual Oficina1 — Prompt Mestre Junho 2026
- * Inclui composição automática do logo via sharp
+ * Geração de imagens via fal.ai (Flux Dev — qualidade cinematic)
+ * Identidade visual Oficina1 — Prompt Mestre v3.0 — Junho 2026
+ * Logo compositado via Supabase Storage (confiável)
  */
 
 import path from 'path'
 import fs from 'fs'
+import { createClient } from './supabase-server'
 
 type ResultadoImagem = {
   url: string
@@ -32,7 +33,56 @@ export async function gerarImagem(
   const prompt = construirPromptImagem(tema, objetivo, textoPost, tipoPost)
 
   try {
-    // 1. Gera imagem base com fal.ai
+    // 1. Gera imagem com Flux Dev (qualidade muito superior ao Schnell)
+    const res = await fetch('https://fal.run/fal-ai/flux/dev', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        image_size: 'square_hd',     // 1024×1024
+        num_inference_steps: 20,      // Flux Dev: 20 = ótima qualidade, ~15s
+        guidance_scale: 3.5,
+        num_images: 1,
+        enable_safety_checker: true,
+        output_format: 'jpeg',
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`fal.ai Flux Dev error ${res.status}: ${err}`)
+    }
+
+    const data = await res.json()
+    const imageUrl = data.images?.[0]?.url
+    if (!imageUrl) throw new Error(`fal.ai sem imagem: ${JSON.stringify(data)}`)
+
+    // 2. Composita logo e sobe para Supabase Storage
+    const urlFinal = await compositarLogoSupabase(imageUrl)
+    return { url: urlFinal, prompt, tipo: tipoPost }
+
+  } catch (err: any) {
+    console.error('[IMAGEM] Erro no Flux Dev:', err?.message ?? err)
+    // Fallback para Flux Schnell se Flux Dev falhar
+    return await gerarImagemFallback(tema, objetivo, textoPost, tipoPost, prompt, apiKey)
+  }
+}
+
+// ─── Fallback: Flux Schnell se Dev falhar ────────────────────────────────────
+
+async function gerarImagemFallback(
+  tema: string,
+  objetivo: string,
+  textoPost: string,
+  tipoPost: 'comercial' | 'autoridade',
+  prompt: string,
+  apiKey: string
+): Promise<ResultadoImagem> {
+  try {
+    console.warn('[IMAGEM] Usando Flux Schnell como fallback')
     const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
       method: 'POST',
       headers: {
@@ -42,28 +92,22 @@ export async function gerarImagem(
       body: JSON.stringify({
         prompt,
         image_size: 'square_hd',
-        num_inference_steps: 8,   // aumentado de 4 para 8 → melhor qualidade
+        num_inference_steps: 8,
         num_images: 1,
         enable_safety_checker: true,
         output_format: 'jpeg',
       }),
     })
 
-    if (!res.ok) {
-      const err = await res.text()
-      throw new Error(`fal.ai error ${res.status}: ${err}`)
-    }
-
+    if (!res.ok) throw new Error(`Flux Schnell error ${res.status}`)
     const data = await res.json()
     const imageUrl = data.images?.[0]?.url
-    if (!imageUrl) throw new Error(`fal.ai sem imagem: ${JSON.stringify(data)}`)
+    if (!imageUrl) throw new Error('Sem imagem no fallback')
 
-    // 2. Composita o logo em TODOS os posts (comercial e autoridade)
-    const urlComLogo = await compositarLogo(imageUrl, apiKey)
-    return { url: urlComLogo, prompt, tipo: tipoPost }
-
+    const urlFinal = await compositarLogoSupabase(imageUrl)
+    return { url: urlFinal, prompt, tipo: tipoPost }
   } catch (err: any) {
-    console.error('[IMAGEM] Erro:', err?.message ?? err)
+    console.error('[IMAGEM] Fallback também falhou:', err?.message)
     return {
       url: `https://placehold.co/1080x1080/000D2B/30F282?text=${encodeURIComponent(tema.slice(0, 30))}`,
       prompt,
@@ -72,85 +116,80 @@ export async function gerarImagem(
   }
 }
 
-async function compositarLogo(imageUrl: string, falApiKey: string): Promise<string> {
+// ─── Logo via Supabase Storage ────────────────────────────────────────────────
+
+async function compositarLogoSupabase(imageUrl: string): Promise<string> {
+  const BUCKET = 'post-images'
+
   try {
     const sharp = (await import('sharp')).default
 
-    // Busca o logo na pasta public
+    // Verifica se logo existe
     const logoPath = path.join(process.cwd(), 'public', 'logo-oficina1.png')
     if (!fs.existsSync(logoPath)) {
-      console.warn('[LOGO] logo-oficina1.png não encontrado em public/ — usando imagem sem logo')
+      console.warn('[LOGO] logo-oficina1.png não encontrado em public/')
       return imageUrl
     }
 
-    // Baixa a imagem gerada
-    const imgRes = await fetch(imageUrl)
-    if (!imgRes.ok) throw new Error('Erro ao baixar imagem do fal.ai')
+    // Baixa imagem gerada
+    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
+    if (!imgRes.ok) throw new Error(`Erro ao baixar imagem: ${imgRes.status}`)
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
 
-    // Redimensiona o logo para 20% da largura da imagem (aprox 200px de 1024)
+    // Redimensiona logo para 18% da largura (≈185px de 1024)
     const logoBuffer = await sharp(logoPath)
-      .resize(200, null, { fit: 'inside' })
+      .resize(185, null, { fit: 'inside' })
       .toBuffer()
 
     const logoMeta = await sharp(logoBuffer).metadata()
-    const logoW = logoMeta.width ?? 200
-    const logoH = logoMeta.height ?? 55
+    const logoW = logoMeta.width ?? 185
+    const logoH = logoMeta.height ?? 50
 
-    // Posiciona no canto inferior direito com margem de 36px
+    // Posição: canto inferior direito com margem de 32px
     const imgMeta = await sharp(imgBuffer).metadata()
     const imgW = imgMeta.width ?? 1024
     const imgH = imgMeta.height ?? 1024
 
-    const left = imgW - logoW - 36
-    const top = imgH - logoH - 36
+    const left = imgW - logoW - 32
+    const top  = imgH - logoH - 32
 
-    // Composita logo sobre a imagem
+    // Composita o logo sobre a imagem
     const composited = await sharp(imgBuffer)
-      .composite([{
-        input: logoBuffer,
-        left,
-        top,
-        blend: 'over',
-      }])
-      .jpeg({ quality: 90 })
+      .composite([{ input: logoBuffer, left, top, blend: 'over' }])
+      .jpeg({ quality: 92 })
       .toBuffer()
 
-    // Faz upload do resultado para o fal.ai storage
-    const uploadRes = await fetch('https://rest.alpha.fal.ai/storage/upload/base64', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        file_name: `post-oficina1-${Date.now()}.jpg`,
-        content_type: 'image/jpeg',
-        b64_data: composited.toString('base64'),
-      }),
-    })
+    // Sobe para Supabase Storage
+    const supabase = createClient()
+    const fileName = `post-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
 
-    if (!uploadRes.ok) {
-      // Fallback: retorna dados URL base64 direto se upload falhar
-      console.warn('[LOGO] Upload para fal.ai falhou, usando imagem sem logo')
-      return imageUrl
+    // Tenta criar o bucket se não existir (ignora erro se já existe)
+    await supabase.storage.createBucket(BUCKET, { public: true }).catch(() => {})
+
+    const { data: uploaded, error: uploadErr } = await supabase.storage
+      .from(BUCKET)
+      .upload(fileName, composited, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      })
+
+    if (uploadErr) {
+      console.error('[LOGO] Erro no upload Supabase:', uploadErr.message)
+      return imageUrl // fallback sem logo
     }
 
-    const uploadData = await uploadRes.json()
-    return uploadData.url ?? imageUrl
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(uploaded.path)
+    console.log('[LOGO] Composição OK →', publicUrl)
+    return publicUrl
 
   } catch (err: any) {
-    console.error('[LOGO] Erro na composição:', err?.message ?? err)
-    return imageUrl
+    console.error('[LOGO] Erro na composição do logo:', err?.message ?? err)
+    return imageUrl // fallback: imagem sem logo
   }
 }
 
 // ─── Extração de conceito do texto do post ───────────────────────────────────
 
-/**
- * Extrai o conceito central do post analisando o texto completo.
- * Retorna: gancho (primeira frase), palavras-chave, metáfora principal.
- */
 function extrairConceitoDoPost(textoPost: string): {
   gancho: string
   palavrasChave: string[]
@@ -159,7 +198,6 @@ function extrairConceitoDoPost(textoPost: string): {
   const linhas = textoPost.split('\n').filter(l => l.trim().length > 0)
   const gancho = linhas[0]?.trim() ?? ''
 
-  // Palavras-chave: substantivos importantes do texto (ignora stop words)
   const stopWords = new Set([
     'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'por', 'em', 'uma', 'um',
     'que', 'não', 'mas', 'como', 'isso', 'este', 'esta', 'seu', 'sua', 'seus',
@@ -167,6 +205,7 @@ function extrairConceitoDoPost(textoPost: string): {
     'nas', 'nos', 'ao', 'aos', 'às', 'já', 'só', 'se', 'ou', 'e', 'a', 'o',
     'na', 'no', 'foi', 'são', 'era', 'está', 'ter', 'tem', 'ser', 'vez',
     'cada', 'antes', 'depois', 'sobre', 'entre', 'ainda', 'sem', 'até',
+    'sempre', 'nunca', 'pode', 'deve', 'precisa', 'faz', 'fazer', 'feito',
   ])
 
   const palavras = textoPost.toLowerCase()
@@ -174,7 +213,6 @@ function extrairConceitoDoPost(textoPost: string): {
     .split(/\s+/)
     .filter(p => p.length >= 5 && !stopWords.has(p))
 
-  // Conta frequência
   const freq: Record<string, number> = {}
   for (const p of palavras) freq[p] = (freq[p] ?? 0) + 1
 
@@ -183,14 +221,15 @@ function extrairConceitoDoPost(textoPost: string): {
     .slice(0, 5)
     .map(([palavra]) => palavra)
 
-  // Detecta metáfora principal (padrões como "como um", "é como", "parece", "imagine")
-  const metaforaMatch = textoPost.match(/(?:como um|é como|como uma|parece|imagine|pensa como|funciona como)\s+([^,.!?]{5,40})/i)
+  const metaforaMatch = textoPost.match(
+    /(?:como um|é como|como uma|parece|imagine|funciona como|é o mesmo que)\s+([^,.!?]{5,40})/i
+  )
   const metafora = metaforaMatch ? metaforaMatch[1].trim() : null
 
   return { gancho, palavrasChave, metafora }
 }
 
-// ─── Construtores de prompt ───────────────────────────────────────────────────
+// ─── Builder principal ────────────────────────────────────────────────────────
 
 function construirPromptImagem(
   tema: string,
@@ -201,12 +240,12 @@ function construirPromptImagem(
   const conceito = extrairConceitoDoPost(textoPost)
   const temaLower = tema.toLowerCase()
 
-  if (tipo === 'autoridade') {
-    return construirPromptAutoridade(temaLower, objetivo, conceito, textoPost)
-  } else {
-    return construirPromptComercial(temaLower, objetivo, conceito, textoPost)
-  }
+  return tipo === 'autoridade'
+    ? construirPromptAutoridade(temaLower, objetivo, conceito, textoPost)
+    : construirPromptComercial(temaLower, objetivo, conceito, textoPost)
 }
+
+// ─── Prompt Comercial (fundo navy, verde neon) ────────────────────────────────
 
 function construirPromptComercial(
   temaLower: string,
@@ -216,28 +255,32 @@ function construirPromptComercial(
 ): string {
   const visual = escolherVisualComercial(temaLower, conceito, textoPost)
 
-  return `Cinematic professional LinkedIn post image, square 1080x1080px.
+  return `Cinematic professional photograph for a B2B LinkedIn post, square 1080x1080 format.
 
-Subject: ${visual}
+SCENE: ${visual}
 
-MANDATORY color palette:
-- Background: deep navy blue #000D2B
-- Accent light: neon green #30F282
-- Secondary accent: turquoise #1AA191
-- Subtle L-shaped geometric pattern barely visible against background
+COLOR PALETTE (mandatory):
+- Background: deep navy blue, almost black (#000D2B)
+- Primary accent: neon green (#30F282) as rim light, reflection, or glow on metallic surfaces
+- Secondary: dark teal (#1AA191) used sparingly
+- Overall mood: premium corporate, dark and sleek
 
-Technical style: photorealistic cinematic, dramatic directional lighting, rim light in neon green, deep navy shadows, lens flare suggestion on metallic surfaces.
+PHOTOGRAPHY STYLE: High-end commercial photography. Dramatic single-source lighting from upper left or right. Strong rim light in neon green on key edges. Shallow depth of field — background slightly blurred. Film grain texture, subtle lens flare. Professional product or architectural photography aesthetic.
 
-STRICT RULES — no exceptions:
-- Zero text, zero letters, zero numbers inside the image
-- Zero logo or brand marks (added separately after generation)
-- Zero generic tech icons: no circuits, no clouds, no Wi-Fi symbols, no globes, no grid overlays
-- Zero human faces visible (backs, silhouettes, hands are allowed)
-- Zero cartoon, flat design, or illustration style
+ABSOLUTE PROHIBITIONS (zero exceptions):
+- No text, letters, numbers, or symbols of any kind in the image
+- No logos, brand marks, watermarks (added separately in post-production)
+- No tech clichés: no circuit boards, no Wi-Fi signals, no clouds, no globes, no grid overlays, no binary code
+- No human faces (backs, silhouettes, and hands are acceptable)
+- No cartoon style, no flat design, no illustration, no gradients
+- No stock-photo look — must look like editorial commercial photography
 
-Composition: centered main subject with strong cinematic framing, ~60% subject / 40% atmospheric background, shallow depth of field on background.
-Output: photorealistic high-detail render, award-winning commercial photography aesthetic.`
+COMPOSITION: Rule of thirds. Main subject occupies center-left or center, atmospheric negative space on right. Bokeh background in deep navy.
+
+OUTPUT: Ultra-detailed photorealistic render. 8K quality. Award-winning commercial photography.`
 }
+
+// ─── Prompt Autoridade (fundo claro, minimalista) ─────────────────────────────
 
 function construirPromptAutoridade(
   temaLower: string,
@@ -247,84 +290,89 @@ function construirPromptAutoridade(
 ): string {
   const visual = escolherVisualAutoridade(temaLower, conceito, textoPost)
 
-  return `Editorial LinkedIn post image, square 1080x1080px.
+  return `Editorial LinkedIn post photograph, square 1080x1080 format.
 
-Subject: ${visual}
+SCENE: ${visual}
 
-Color palette:
-- Background: pure white or very light warm gray (#F8F7F5)
-- Main elements: deep graphite (#1A1A1A) and dark charcoal tones
-- Single accent: neon green (#30F282) used sparingly — one element only, not dominant
-- Negative space is intentional and should be generous
+COLOR PALETTE (mandatory):
+- Background: pure white or warm light gray (#F5F5F3)
+- Objects: dark graphite (#1A1A1A) and matte charcoal tones
+- Accent: a single neon green (#30F282) element — used ONCE, small, as a visual focal point
+- Generous negative space — minimalism is intentional
 
-Technical style: editorial magazine cover, clean studio photography or high-end product photography aesthetic. Minimalist but with clear subject matter — NOT purely abstract.
+PHOTOGRAPHY STYLE: High-end editorial magazine photography. Studio lighting, soft shadows, impeccable detail. Think Bloomberg Businessweek cover or Harvard Business Review editorial. Clean, confident, sophisticated. NOT decorative — purposeful.
 
-STRICT RULES — no exceptions:
-- Zero text, zero letters, zero numbers inside the image
-- Zero logo or brand marks (added separately)
-- Zero generic tech icons: no circuits, no clouds, no globes
-- Zero human faces visible
-- Zero neon colors as dominant (only as accent)
-- Zero dark background (must be light/white)
+ABSOLUTE PROHIBITIONS (zero exceptions):
+- No text, letters, numbers, or symbols
+- No logos or brand marks
+- No dark background (must be white or very light)
+- No neon colors dominating the image (only as one small accent)
+- No human faces
+- No cartoon, flat design, or illustration
+- No generic office stock photography look
 
-Composition: asymmetric, strong negative space, deliberate visual tension. Subject occupies 30-45% of frame.
-Output: high-end editorial photography or realistic product photography, NEVER cartoon, NEVER flat design.`
+COMPOSITION: Asymmetric. Subject occupies 30-40% of frame, deliberate negative space. Strong shadow creates visual depth. Single point of interest.
+
+OUTPUT: Ultra-detailed photorealistic render. 8K quality. Premium editorial photography.`
 }
 
-// ─── Escolha de conceito visual por tema ─────────────────────────────────────
+// ─── Escolha de visual por tema/conteúdo ─────────────────────────────────────
 
 function escolherVisualComercial(
   temaLower: string,
   conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
   textoPost: string
 ): string {
+  const t = textoPost.toLowerCase()
+
   // Release / versão / atualização
-  if (textoPost.toLowerCase().match(/release|versão|atualização|v12|v11|patch|upgrade|migra/)) {
-    return 'A precision mechanical gear system mid-transition, one gear replacing another with glowing neon green contact points, macro cinematic close-up against deep navy background. Metaphor for system version transition.'
+  if (t.match(/release|versão|atualiza|v12|v11|patch|upgrade|migra/)) {
+    return 'Macro close-up of a precision mechanical lock mechanism mid-transition: one tumbler rotating to a new position, neon green light tracing the moving part, droplets of condensation on the dark metal surface. Ultra detailed, cinematic lighting. Metaphor: system version transition.'
   }
 
-  // Licença / custo / investimento / ROI
-  if (textoPost.toLowerCase().match(/licen|investimento|custo|economia|valor|preço|contrato|compra/)) {
-    return 'A elegant digital scale or balance scale with glowing data streams on one side and green currency light on the other, dark cinematic navy environment, precise engineering aesthetic.'
+  // Licença / custo / investimento
+  if (t.match(/licen|investimento|custo|economia|valor|preço|contrato|compra/)) {
+    return 'A precision jeweler\'s scale made of dark steel, one side holding a glowing neon green geometric solid, the other empty and tilted slightly down. Shot from a low angle, navy background, dramatic rim lighting. Metaphor: investment decision and ROI balance.'
   }
 
-  // Implantação / projeto / entrega
-  if (textoPost.toLowerCase().match(/implanta|projeto|entrega|prazo|cronograma|deploy|go.live|lançamento/)) {
-    return 'Architectural blueprint perspective view of a building foundation being laid with neon green laser alignment lines, cinematic overhead angle, deep navy environment.'
+  // Implantação / projeto / entrega / go-live
+  if (t.match(/implanta|projeto|entrega|prazo|cronograma|deploy|go.live|lançamento/)) {
+    return 'An architect\'s technical compass — dark brushed steel — precisely placed on a black drafting surface, a single neon green laser line crossing the drawing. Top-down angle, dramatic shadows. Metaphor: precision project planning.'
   }
 
-  // Integração / API / conexão
-  if (textoPost.toLowerCase().match(/integra|api|conex|automação|webhook|erp|módulo|sincroniza/)) {
-    return 'Two premium metallic server racks or circuit components connecting via a glowing neon green bridge of light, cinematic dark environment, macro precision photography.'
+  // Integração / conexão / ERP / módulos
+  if (t.match(/integra|api|conex|módulo|sincroniza|webhook/)) {
+    return 'Two dark metallic connectors with male and female ends, aligned perfectly but not yet touching, a neon green arc of electrical light bridging the gap between them. Macro lens, navy background, ultra crisp. Metaphor: system integration.'
   }
 
-  // Financeiro / fiscal / contabilidade / SPED
-  if (textoPost.toLowerCase().match(/fiscal|financeiro|contábil|sped|nfe|nota fiscal|tribut|impostos?/)) {
-    return 'Close-up of precision financial ledger or compliance form being processed by a robotic arm with neon green light tracing the document, dark cinematic background, ultra detailed.'
+  // Fiscal / tributário / contabilidade
+  if (t.match(/fiscal|financeiro|contábil|sped|nfe|nota fiscal|tribut|reform|imposto/)) {
+    return 'A stack of dark leather folders or bound documents on a black surface, one document partially open revealing neon green highlighted lines. Dramatic overhead lighting, deep shadows, editorial feel. Metaphor: fiscal compliance and documentation.'
   }
 
-  // Customização / desenvolvimento / código
-  if (textoPost.toLowerCase().match(/customiz|desenvolv|código|advpl|programação|personaliz/)) {
-    return 'Master craftsman hands (viewed from above, no face) working with precision tools on a complex dark metallic surface with green glowing circuit-like engravings, macro cinematic.'
+  // Customização / desenvolvimento
+  if (t.match(/customiz|desenvolv|código|advpl|programação|personaliz/)) {
+    return 'Close-up of a craftsman\'s hand (no face) using a precision engraving tool on a dark metal surface, sparks of neon green light where the tool meets the material. Shallow depth of field. Metaphor: bespoke system customization.'
   }
 
-  // Suporte / atendimento / parceria / consultoria
-  if (temaLower.includes('comercial') || textoPost.toLowerCase().match(/parceria|estratég|diagnóstico|consultor/)) {
-    return 'A lone professional figure in silhouette against a floor-to-ceiling window in a modern high-rise at night, the city lights in navy blue and green below, contemplative strategic positioning.'
+  // Suporte / parceria / consultoria / quando o ERP falha
+  if (t.match(/parceria|consultor|diagnóstico|suporte|parou|falhou|travou|instável/)) {
+    return 'A dark executive desk surface at night, a single focused desk lamp in neon green casting dramatic light on an open notebook and a sleek pen. Only the hands visible (no face). City lights blurred in background window. Metaphor: strategic consulting partnership.'
   }
 
   // TOTVS / Protheus genérico
-  if (temaLower.includes('protheus') || temaLower.includes('totvs')) {
-    return 'Premium enterprise ERP dashboard interface reflected on a polished dark glass desk surface, neon green data charts floating above, cinematic corporate control room atmosphere at night.'
+  if (temaLower.match(/protheus|totvs|erp/)) {
+    return 'A high-end dark server room corridor: two rows of glossy black server racks extending to a vanishing point, neon green status lights creating a hypnotic symmetrical pattern. No human visible. Cinematic ultra-wide perspective. Metaphor: enterprise infrastructure.'
   }
 
-  // Fatos relevantes / notícias / mercado
-  if (temaLower.includes('fatos') || temaLower.includes('relevantes')) {
-    return 'A dramatic close-up of a high-precision compass or navigational instrument resting on a dark surface, neon green indicator light, cinematic depth of field. Metaphor for navigating relevant information.'
+  // Fatos relevantes / notícias
+  if (temaLower.match(/fatos|relevantes/)) {
+    return 'A dark obsidian monolith or premium black stone tablet on a navy surface, a single neon green line of light cutting across it diagonally. Minimalist and powerful. Long shadows from directional lighting. Metaphor: impactful information.'
   }
 
   // Fallback comercial
-  return `Premium corporate environment visual metaphor for: ${conceito.palavrasChave.slice(0, 3).join(', ')}. Dark navy background, neon green accent light, cinematic business photography.`
+  const kw = conceito.palavrasChave.slice(0, 3).join(', ')
+  return `A single premium object related to "${kw}" — dark metal or glass, sitting on a navy reflective surface. Neon green rim light on one edge. Ultra macro detail, cinematic shallow depth of field. B2B editorial commercial photography.`
 }
 
 function escolherVisualAutoridade(
@@ -332,42 +380,43 @@ function escolherVisualAutoridade(
   conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
   textoPost: string
 ): string {
-  const textoLower = textoPost.toLowerCase()
+  const t = textoPost.toLowerCase()
 
-  // IA / inteligência artificial / Claude / automação
-  if (temaLower.includes('artificial') || temaLower.includes(' ia') || temaLower.startsWith('ia') || textoLower.match(/inteligência artificial|claude|gemini|chatgpt|modelo de linguagem|llm/)) {
-    if (textoLower.match(/prioridade|todos|empresas|mercado|adoção/)) {
-      return 'Close-up of hands typing on a sleek dark laptop keyboard, a subtle holographic visualization in soft neon green glow rising from the screen, white studio background, editorial photography.'
+  // IA / inteligência artificial / ferramentas
+  if (temaLower.match(/artificial|intelig| ia$|^ia /) || t.match(/inteligência artificial|chatgpt|gemini|claude|llm|modelo de linguagem/)) {
+    if (t.match(/ferramenta|usar|prático|trabalho|produtiv|método/)) {
+      return 'Top-down flat lay: a sleek dark laptop keyboard, a Moleskine notebook open to a blank page, and a mechanical pencil — arranged geometrically on a white surface. A single neon green pen cap placed deliberately off-center. Studio overhead lighting, perfect shadows.'
     }
-    if (textoLower.match(/ferramenta|usar|prático|dia a dia|trabalho|produtiv/)) {
-      return 'A single premium mechanical pencil resting on a clean white surface next to a sleek open laptop showing abstract code reflection, minimal editorial still life, one neon green accent.'
+    if (t.match(/pensar|raciocínio|inteligente|profissional|vantagem/)) {
+      return 'A single dark graphite chess knight piece standing alone on a white marble surface. Dramatic raking side light from the right, casting a long sharp shadow to the left. One neon green dot reflection on the surface. Minimalist editorial photography.'
     }
-    return 'Person viewed from behind (no face) facing a large monitor with subtle AI visualization in a minimal white-walled modern office, clean editorial composition, soft neon green highlight on screen edge.'
+    return 'Close-up of hands (no face visible, wrists and above) hovering over a sleek laptop keyboard, fingertips not quite touching the keys yet. Clean white background, soft studio light from above, deliberate shallow focus on the fingertips.'
   }
 
-  // Liderança / gestão / decisão / reunião
-  if (textoLower.match(/lideranç|gestão|decisão|reunião|consenso|equipe|time|cultura/)) {
-    if (textoLower.match(/medo|silêncio|concordan|pressão|constrangimento/)) {
-      return 'Empty modern boardroom with a single empty chair at the head of the table, dramatic side lighting creating deep shadows, white walls, graphite furniture. Metaphor for absent voice or avoided conversation.'
+  // Liderança / gestão / equipe / cultura
+  if (t.match(/lideranç|gestão|equipe|time|cultura|decis|reunião|consenso/)) {
+    if (t.match(/medo|silêncio|concordan|pressão|difícil/)) {
+      return 'An empty modern conference room: long white table, chairs aligned, one chair at the head of the table slightly pushed back as if someone just stood up. Directional light from a tall window, long shadows across the table. One neon green pen left on the surface.'
     }
-    return 'Close-up of a single chess king piece (dark graphite) standing alone on a minimal white surface, dramatic directional lighting, deep shadows, editorial product photography.'
+    return 'A single dark graphite chess king piece — tall, worn slightly — resting upright on a flat white marble surface. Single directional light source from the side creating dramatic shadow three times longer than the piece itself. Macro lens.'
   }
 
-  // Carreira / trajetória / crescimento
-  if (textoLower.match(/carreira|trajetória|crescimento|aprendizado|experiência|anos|mercado/)) {
-    return 'A minimalist staircase photographed from below looking up, graphite tones against white walls, strong geometric lines, editorial architectural photography.'
+  // Carreira / trajetória / experiência / anos
+  if (t.match(/carreira|trajetória|anos|experiência|aprendizado|crescimento/)) {
+    return 'A winding minimalist staircase photographed from the bottom looking up: white walls, dark graphite handrail, geometric lines. One step has a small neon green geometric shape resting on it. High-contrast editorial architectural photography.'
   }
 
-  // Negócio / empresa / estratégia
-  if (textoLower.match(/negócio|empresa|estratégia|resultado|crescimento|processo/)) {
-    return 'Two abstract geometric dark forms — one sharp angular, one smooth curved — resting on a white surface, suggesting complementary forces, editorial still life photography.'
+  // Percepção / reflexão / insight / opinião
+  if (t.match(/percebi|aprendi|reflexão|pensar|questão|perspectiva|observ/)) {
+    return 'A smooth dark river stone — perfect oval, matte black — resting alone on a white cotton surface. Single directional light from the left, shadow extending to the right three times its length. A tiny neon green fragment of mineral visible in the stone. Macro editorial.'
   }
 
-  // Reflexão / pensamento / opinião
-  if (textoLower.match(/percebi|aprendi|reflexão|pensar|questão|perspectiva/)) {
-    return 'A single dark stone or architectural fragment resting on an empty white surface, long dramatic shadow from side lighting, minimal editorial photography. Metaphor for a grounding observation.'
+  // Negócio / empresa / estratégia / resultado
+  if (t.match(/negócio|empresa|estratégia|resultado|processo|operaç/)) {
+    return 'An executive\'s desk corner: dark leather agenda open, a premium fountain pen resting diagonally across it, matte black business cards fanned slightly. White background, dramatic overhead spot light. Neon green line barely visible as a ruler or credit card edge.'
   }
 
   // Fallback autoridade
-  return `Minimalist editorial still life representing: ${conceito.palavrasChave.slice(0, 2).join(' and ')}. One or two dark graphite objects on white background, dramatic side lighting, one neon green accent element, premium magazine cover aesthetic.`
+  const kw = conceito.palavrasChave.slice(0, 2).join(' and ')
+  return `Minimal editorial still life representing "${kw}": one or two dark graphite objects — premium, intentional, specific — placed asymmetrically on a pure white surface. Single directional light source from upper right. Long dramatic shadow. One small neon green accent element. Premium magazine aesthetic.`
 }

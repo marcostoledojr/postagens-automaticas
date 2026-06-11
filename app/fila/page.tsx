@@ -59,6 +59,8 @@ export default function FilaAprovacao() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
+  const [diasGerar, setDiasGerar] = useState(5)
+  const [mostrarOpcoes, setMostrarOpcoes] = useState(false)
   const [progressoGeracao, setProgressoGeracao] = useState<{ atual: number; total: number; tema: string } | null>(null)
 
   const carregar = useCallback(async () => {
@@ -128,50 +130,67 @@ export default function FilaAprovacao() {
     await carregar(); setSalvando(null)
   }
 
-  async function zerarEGerar() {
-    if (!confirm('Apagar todos os posts pendentes e gerar novos (1 por tema)?')) return
+  // Apaga apenas posts pendentes — sem gerar nada
+  async function zerar() {
+    if (!confirm('Apagar todos os posts PENDENTES? (aprovados e publicados não são afetados)')) return
     setZerando(true)
-    setProgressoGeracao({ atual: 0, total: 0, tema: '' })
-
     try {
-      // 1. Apaga pendentes
-      const delRes = await fetch('/api/gerar', {
+      const res = await fetch('/api/gerar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ acao: 'zerar' }),
       })
-      if (!delRes.ok) throw new Error('Erro ao apagar pendentes')
+      if (!res.ok) throw new Error('Erro ao apagar pendentes')
+      await carregar()
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`)
+    }
+    setZerando(false)
+  }
 
-      // 2. Busca temas ativos
-      const temasRes = await fetch('/api/temas')
-      const temasData = await temasRes.json()
-      const temas: { id: string; nome: string }[] = (temasData.temas ?? []).filter((t: any) => t.ativo)
+  // Gera posts para os próximos N dias respeitando agenda e temas
+  async function gerarPosts() {
+    setMostrarOpcoes(false)
+    setGerando(true)
+    setProgressoGeracao({ atual: 0, total: 0, tema: 'Buscando slots...' })
 
-      if (temas.length === 0) {
-        alert('Nenhum tema ativo encontrado.')
-        setZerando(false)
+    try {
+      // 1. Busca slots vazios nos próximos N dias
+      const slotsRes = await fetch(`/api/gerar/slots?dias=${diasGerar}`)
+      const slotsData = await slotsRes.json()
+      const slots: { data_iso: string; horario: string; tema_id: string; tema_nome: string; dia_label: string }[]
+        = slotsData.slots ?? []
+
+      if (slots.length === 0) {
+        alert(`Nenhum slot vazio encontrado nos próximos ${diasGerar} dias. A agenda está completa.`)
+        setGerando(false)
+        setProgressoGeracao(null)
         return
       }
 
-      const horarios = ['09:00', '11:00', '13:00', '15:00', '17:00']
       let gerados = 0
       let erros = 0
 
-      // 3. Gera 1 post por tema — chamada individual (< 60s cada)
-      for (let i = 0; i < temas.length; i++) {
-        const tema = temas[i]
-        setProgressoGeracao({ atual: i + 1, total: temas.length, tema: tema.nome })
+      // 2. Gera 1 post por slot (chamadas individuais < 60s cada)
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i]
+        setProgressoGeracao({
+          atual: i + 1,
+          total: slots.length,
+          tema: `${slot.dia_label} ${slot.horario} — ${slot.tema_nome}`,
+        })
 
         const res = await fetch('/api/gerar', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             acao: 'gerar_tema',
-            tema_id: tema.id,
-            horario: horarios[i % horarios.length],
+            tema_id: slot.tema_id,
+            horario: slot.horario,
+            data_iso: slot.data_iso,
           }),
         })
         if (res.ok) { gerados++ } else { erros++ }
 
-        await carregar() // atualiza a lista a cada post gerado
+        await carregar()
       }
 
       alert(`✅ Gerados: ${gerados} | ❌ Erros: ${erros}`)
@@ -181,18 +200,6 @@ export default function FilaAprovacao() {
     }
 
     setProgressoGeracao(null)
-    setZerando(false)
-  }
-
-  async function gerarMais() {
-    setGerando(true)
-    try {
-      const res = await fetch('/api/gerar')
-      const data = await res.json()
-      alert(`✅ Gerados: ${data.gerados} | ❌ Erros: ${data.erros}`)
-      setTabAtiva('pendente')
-      await carregar()
-    } catch { alert('Erro ao gerar posts.') }
     setGerando(false)
   }
 
@@ -214,16 +221,51 @@ export default function FilaAprovacao() {
             className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
           </button>
-          <button onClick={gerarMais} disabled={gerando || zerando}
-            className="flex items-center gap-1.5 text-sm text-blue-600 border border-blue-200 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
-            <Sparkles size={13} className={gerando ? 'animate-pulse' : ''} />
-            {gerando ? 'Gerando...' : 'Gerar posts'}
+          <button onClick={zerar} disabled={zerando || gerando}
+            className="flex items-center gap-1.5 text-sm text-red-600 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
+            <Trash2 size={13} className={zerando ? 'animate-spin' : ''} />
+            {zerando ? 'Zerando...' : 'Zerar pendentes'}
           </button>
-          <button onClick={zerarEGerar} disabled={zerando || gerando}
-            className="flex items-center gap-1.5 text-sm text-orange-600 border border-orange-200 px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50">
-            <RotateCcw size={13} className={zerando ? 'animate-spin' : ''} />
-            {zerando ? 'Gerando...' : 'Zerar e gerar'}
-          </button>
+
+          {/* Botão Gerar com seletor de dias */}
+          <div className="relative">
+            <div className="flex items-stretch">
+              <button
+                onClick={gerarPosts}
+                disabled={gerando || zerando}
+                className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-3 py-2 rounded-l-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <Sparkles size={13} className={gerando ? 'animate-pulse' : ''} />
+                {gerando ? 'Gerando...' : `Gerar posts (${diasGerar}d)`}
+              </button>
+              <button
+                onClick={() => setMostrarOpcoes(prev => !prev)}
+                disabled={gerando || zerando}
+                className="text-sm bg-blue-700 text-white px-2 py-2 rounded-r-lg hover:bg-blue-800 transition-colors disabled:opacity-50 border-l border-blue-500"
+                title="Escolher quantos dias"
+              >
+                ▾
+              </button>
+            </div>
+            {mostrarOpcoes && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-3 min-w-40">
+                <p className="text-xs font-medium text-slate-500 mb-2">Gerar para quantos dias à frente?</p>
+                {[1, 2, 3, 5, 7, 10].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => { setDiasGerar(d); setMostrarOpcoes(false) }}
+                    className={`w-full text-left text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                      diasGerar === d
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {d} {d === 1 ? 'dia' : 'dias'} {d === 5 ? '(semana)' : d === 10 ? '(2 semanas)' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -231,17 +273,24 @@ export default function FilaAprovacao() {
       {progressoGeracao && (
         <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-sm text-blue-700 font-medium">
-              Gerando {progressoGeracao.atual} de {progressoGeracao.total}: {progressoGeracao.tema}
+            <span className="text-sm text-blue-700 font-medium flex items-center gap-1.5">
+              <RefreshCw size={13} className="animate-spin" />
+              {progressoGeracao.total === 0
+                ? progressoGeracao.tema
+                : `${progressoGeracao.atual}/${progressoGeracao.total}: ${progressoGeracao.tema}`}
             </span>
-            <span className="text-xs text-blue-500">{Math.round((progressoGeracao.atual / progressoGeracao.total) * 100)}%</span>
+            {progressoGeracao.total > 0 && (
+              <span className="text-xs text-blue-500">{Math.round((progressoGeracao.atual / progressoGeracao.total) * 100)}%</span>
+            )}
           </div>
-          <div className="w-full bg-blue-200 rounded-full h-1.5">
-            <div
-              className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
-              style={{ width: `${(progressoGeracao.atual / progressoGeracao.total) * 100}%` }}
-            />
-          </div>
+          {progressoGeracao.total > 0 && (
+            <div className="w-full bg-blue-200 rounded-full h-1.5">
+              <div
+                className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${(progressoGeracao.atual / progressoGeracao.total) * 100}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 

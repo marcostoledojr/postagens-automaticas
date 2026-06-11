@@ -88,9 +88,12 @@ export async function POST(req: NextRequest) {
     // Gera imagem
     const imagem = await gerarImagem(titulo, temaVirtual.objetivo, postGerado.texto, tipoFinal)
 
-    // Monta data de publicação
+    // Monta data de publicação em hora local (Brasil)
+    // new Date("YYYY-MM-DD") interpreta como UTC midnight → setHours fica errado.
+    // Parseamos como data local para preservar o dia e hora corretos.
     const [hh, mm] = horario.split(':').map(Number)
-    const dataBase = new Date(data)
+    const [ano, mes, dia] = data.split('-').map(Number)
+    const dataBase = new Date(ano, mes - 1, dia)  // local midnight
     const dataPublicacao = setSeconds(setMinutes(setHours(dataBase, hh), mm), 0)
 
     // Salva como pendente

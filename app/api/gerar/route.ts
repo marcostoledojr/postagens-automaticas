@@ -53,11 +53,12 @@ export async function POST(req: NextRequest) {
       const configMap = Object.fromEntries((configs ?? []).map((c: any) => [c.chave, c.valor]))
       const instrucaoBase: string = configMap['instrucoes_gerais'] ?? ''
 
-      // Horário fornecido pelo cliente ou fallback para amanhã às 09:00
+      // Horário e data fornecidos pelo cliente ou fallback para amanhã às 09:00
       const horario: string = body.horario ?? '09:00'
       const [hh, mm] = horario.split(':').map(Number)
-      const amanha = addDays(new Date(), 1)
-      const dataSlot = setSeconds(setMinutes(setHours(amanha, hh), mm), 0)
+      // Aceita data_iso explícita (vindo do endpoint de slots) ou usa amanhã
+      const diaBase = body.data_iso ? new Date(body.data_iso) : addDays(new Date(), 1)
+      const dataSlot = setSeconds(setMinutes(setHours(diaBase, hh), mm), 0)
 
       // Busca ângulos já usados nos últimos 30 dias para este tema (anti-repetição)
       const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
