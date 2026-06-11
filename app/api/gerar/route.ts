@@ -59,8 +59,25 @@ export async function POST(req: NextRequest) {
       const amanha = addDays(new Date(), 1)
       const dataSlot = setSeconds(setMinutes(setHours(amanha, hh), mm), 0)
 
+      // Busca ângulos já usados nos últimos 30 dias para este tema (anti-repetição)
+      const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
+      const { data: postsDoMes } = await supabase
+        .from('posts')
+        .select('texto')
+        .eq('tema_id', tema.id)
+        .gte('created_at', trintaDiasAtras.toISOString())
+        .in('status', ['pendente', 'aprovado', 'agendado', 'publicado'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      // Extrai a primeira linha (gancho) de cada post como representação do ângulo
+      const angulosRecentes = (postsDoMes ?? [])
+        .map((p: any) => p.texto?.split('\n').find((l: string) => l.trim().length > 0)?.trim())
+        .filter(Boolean) as string[]
+
       const fontes = await buscarTema(tema.nome, tema.objetivo)
-      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [])
+      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [], angulosRecentes)
       const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
       const { error: insertErr } = await supabase.from('posts').insert({

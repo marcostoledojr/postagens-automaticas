@@ -42,7 +42,7 @@ export async function gerarImagem(
       body: JSON.stringify({
         prompt,
         image_size: 'square_hd',
-        num_inference_steps: 4,
+        num_inference_steps: 8,   // aumentado de 4 para 8 → melhor qualidade
         num_images: 1,
         enable_safety_checker: true,
         output_format: 'jpeg',
@@ -58,13 +58,9 @@ export async function gerarImagem(
     const imageUrl = data.images?.[0]?.url
     if (!imageUrl) throw new Error(`fal.ai sem imagem: ${JSON.stringify(data)}`)
 
-    // 2. Para posts comerciais, composita o logo
-    if (tipoPost === 'comercial') {
-      const urlComLogo = await compositarLogo(imageUrl, apiKey)
-      return { url: urlComLogo, prompt, tipo: tipoPost }
-    }
-
-    return { url: imageUrl, prompt, tipo: tipoPost }
+    // 2. Composita o logo em TODOS os posts (comercial e autoridade)
+    const urlComLogo = await compositarLogo(imageUrl, apiKey)
+    return { url: urlComLogo, prompt, tipo: tipoPost }
 
   } catch (err: any) {
     console.error('[IMAGEM] Erro:', err?.message ?? err)
@@ -83,7 +79,7 @@ async function compositarLogo(imageUrl: string, falApiKey: string): Promise<stri
     // Busca o logo na pasta public
     const logoPath = path.join(process.cwd(), 'public', 'logo-oficina1.png')
     if (!fs.existsSync(logoPath)) {
-      console.warn('[LOGO] logo-oficina1.png não encontrado em public/')
+      console.warn('[LOGO] logo-oficina1.png não encontrado em public/ — usando imagem sem logo')
       return imageUrl
     }
 
@@ -92,22 +88,22 @@ async function compositarLogo(imageUrl: string, falApiKey: string): Promise<stri
     if (!imgRes.ok) throw new Error('Erro ao baixar imagem do fal.ai')
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
 
-    // Redimensiona o logo para ~22% da largura da imagem (aprox 225px de 1024)
+    // Redimensiona o logo para 20% da largura da imagem (aprox 200px de 1024)
     const logoBuffer = await sharp(logoPath)
-      .resize(225, null, { fit: 'inside' })
+      .resize(200, null, { fit: 'inside' })
       .toBuffer()
 
     const logoMeta = await sharp(logoBuffer).metadata()
-    const logoW = logoMeta.width ?? 225
-    const logoH = logoMeta.height ?? 60
+    const logoW = logoMeta.width ?? 200
+    const logoH = logoMeta.height ?? 55
 
-    // Posiciona no canto inferior direito com margem de 40px
+    // Posiciona no canto inferior direito com margem de 36px
     const imgMeta = await sharp(imgBuffer).metadata()
     const imgW = imgMeta.width ?? 1024
     const imgH = imgMeta.height ?? 1024
 
-    const left = imgW - logoW - 40
-    const top = imgH - logoH - 40
+    const left = imgW - logoW - 36
+    const top = imgH - logoH - 36
 
     // Composita logo sobre a imagem
     const composited = await sharp(imgBuffer)
@@ -135,6 +131,7 @@ async function compositarLogo(imageUrl: string, falApiKey: string): Promise<stri
     })
 
     if (!uploadRes.ok) {
+      // Fallback: retorna dados URL base64 direto se upload falhar
       console.warn('[LOGO] Upload para fal.ai falhou, usando imagem sem logo')
       return imageUrl
     }
@@ -144,9 +141,56 @@ async function compositarLogo(imageUrl: string, falApiKey: string): Promise<stri
 
   } catch (err: any) {
     console.error('[LOGO] Erro na composição:', err?.message ?? err)
-    return imageUrl // Retorna sem logo em caso de erro
+    return imageUrl
   }
 }
+
+// ─── Extração de conceito do texto do post ───────────────────────────────────
+
+/**
+ * Extrai o conceito central do post analisando o texto completo.
+ * Retorna: gancho (primeira frase), palavras-chave, metáfora principal.
+ */
+function extrairConceitoDoPost(textoPost: string): {
+  gancho: string
+  palavrasChave: string[]
+  metafora: string | null
+} {
+  const linhas = textoPost.split('\n').filter(l => l.trim().length > 0)
+  const gancho = linhas[0]?.trim() ?? ''
+
+  // Palavras-chave: substantivos importantes do texto (ignora stop words)
+  const stopWords = new Set([
+    'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'por', 'em', 'uma', 'um',
+    'que', 'não', 'mas', 'como', 'isso', 'este', 'esta', 'seu', 'sua', 'seus',
+    'suas', 'todo', 'toda', 'mais', 'muito', 'quando', 'onde', 'quem', 'nos',
+    'nas', 'nos', 'ao', 'aos', 'às', 'já', 'só', 'se', 'ou', 'e', 'a', 'o',
+    'na', 'no', 'foi', 'são', 'era', 'está', 'ter', 'tem', 'ser', 'vez',
+    'cada', 'antes', 'depois', 'sobre', 'entre', 'ainda', 'sem', 'até',
+  ])
+
+  const palavras = textoPost.toLowerCase()
+    .replace(/[^\wÀ-ÿ\s]/g, ' ')
+    .split(/\s+/)
+    .filter(p => p.length >= 5 && !stopWords.has(p))
+
+  // Conta frequência
+  const freq: Record<string, number> = {}
+  for (const p of palavras) freq[p] = (freq[p] ?? 0) + 1
+
+  const palavrasChave = Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([palavra]) => palavra)
+
+  // Detecta metáfora principal (padrões como "como um", "é como", "parece", "imagine")
+  const metaforaMatch = textoPost.match(/(?:como um|é como|como uma|parece|imagine|pensa como|funciona como)\s+([^,.!?]{5,40})/i)
+  const metafora = metaforaMatch ? metaforaMatch[1].trim() : null
+
+  return { gancho, palavrasChave, metafora }
+}
+
+// ─── Construtores de prompt ───────────────────────────────────────────────────
 
 function construirPromptImagem(
   tema: string,
@@ -154,76 +198,176 @@ function construirPromptImagem(
   textoPost: string,
   tipo: 'comercial' | 'autoridade'
 ): string {
-  const primeirasFrases = textoPost.split('.').slice(0, 2).join('. ')
-  const palavrasChave = primeirasFrases.split(' ').slice(0, 8).join(' ')
+  const conceito = extrairConceitoDoPost(textoPost)
+  const temaLower = tema.toLowerCase()
 
   if (tipo === 'autoridade') {
-    return `Professional LinkedIn post image, square format 1080x1080px.
-
-Visual concept: ${conceituarVisual(tema, objetivo, palavrasChave)}
-
-Style: editorial magazine cover style, clean and sophisticated, premium business publication aesthetic.
-Background: pure white or very light off-white. Dark graphite tones as main elements. Minimal neon green (#30F282) accent only.
-NO text, NO logo, NO brand elements inside the image.
-NO generic technology icons (no circuits, no clouds, no globes).
-NO people with visible faces.
-Lighting: clean, diffused, soft studio light.
-Composition: minimalist, architectural, strong geometric elements.
-Output: photorealistic or realistic illustration, NEVER cartoon, NEVER flat design.`
+    return construirPromptAutoridade(temaLower, objetivo, conceito, textoPost)
+  } else {
+    return construirPromptComercial(temaLower, objetivo, conceito, textoPost)
   }
+}
 
-  const conceito = conceituarVisualComercial(tema, objetivo, palavrasChave)
+function construirPromptComercial(
+  temaLower: string,
+  objetivo: string,
+  conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
+  textoPost: string
+): string {
+  const visual = escolherVisualComercial(temaLower, conceito, textoPost)
 
-  return `Professional LinkedIn post image, square format 1080x1080px.
+  return `Cinematic professional LinkedIn post image, square 1080x1080px.
 
-Visual concept: ${conceito}
+Subject: ${visual}
 
-Color palette (MANDATORY):
+MANDATORY color palette:
 - Background: deep navy blue #000D2B
-- Highlights: neon green #30F282 and turquoise #1AA191
-- Subtle geometric pattern: rounded L-shapes in grid, slightly lighter than background
+- Accent light: neon green #30F282
+- Secondary accent: turquoise #1AA191
+- Subtle L-shaped geometric pattern barely visible against background
 
-Style: cinematic and editorial. Premium corporate.
-NO text inside the image (zero AI-generated text or letters).
-NO logo or brand marks (added separately).
-NO generic technology icons (no circuits, no clouds, no globes, no grid lines).
-NO people with visible faces.
-Lighting: dramatic cinematic with rim light in neon green, deep shadows.
-Composition: centered subject, strong visual metaphor.
-Output: photorealistic or realistic illustration, NEVER cartoon, NEVER flat design.`
+Technical style: photorealistic cinematic, dramatic directional lighting, rim light in neon green, deep navy shadows, lens flare suggestion on metallic surfaces.
+
+STRICT RULES — no exceptions:
+- Zero text, zero letters, zero numbers inside the image
+- Zero logo or brand marks (added separately after generation)
+- Zero generic tech icons: no circuits, no clouds, no Wi-Fi symbols, no globes, no grid overlays
+- Zero human faces visible (backs, silhouettes, hands are allowed)
+- Zero cartoon, flat design, or illustration style
+
+Composition: centered main subject with strong cinematic framing, ~60% subject / 40% atmospheric background, shallow depth of field on background.
+Output: photorealistic high-detail render, award-winning commercial photography aesthetic.`
 }
 
-function conceituarVisual(tema: string, objetivo: string, palavrasChave: string): string {
-  const mapaConceitosAutoridade: Record<string, string> = {
-    'inteligência artificial': 'abstract minimalist representation of AI and human collaboration, geometric shapes suggesting neural connections, clean lines on white background',
-    'ia': 'abstract minimalist technology metaphor, precise geometric forms suggesting intelligence, monochromatic with neon green accent',
-    'liderança': 'architectural minimalist composition, strong vertical lines suggesting stability and direction, chess piece or compass metaphor',
-    'carreira': 'road perspective, architectural elements suggesting progression and growth',
-    'gestão': 'organizational structure reimagined as abstract sculpture, geometric balance',
-  }
-  const temaLower = tema.toLowerCase()
-  for (const [chave, conceito] of Object.entries(mapaConceitosAutoridade)) {
-    if (temaLower.includes(chave)) return conceito
-  }
-  return `minimalist editorial concept representing: "${objetivo}". Abstract geometric shapes suggesting ${palavrasChave}. White background.`
+function construirPromptAutoridade(
+  temaLower: string,
+  objetivo: string,
+  conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
+  textoPost: string
+): string {
+  const visual = escolherVisualAutoridade(temaLower, conceito, textoPost)
+
+  return `Editorial LinkedIn post image, square 1080x1080px.
+
+Subject: ${visual}
+
+Color palette:
+- Background: pure white or very light warm gray (#F8F7F5)
+- Main elements: deep graphite (#1A1A1A) and dark charcoal tones
+- Single accent: neon green (#30F282) used sparingly — one element only, not dominant
+- Negative space is intentional and should be generous
+
+Technical style: editorial magazine cover, clean studio photography or high-end product photography aesthetic. Minimalist but with clear subject matter — NOT purely abstract.
+
+STRICT RULES — no exceptions:
+- Zero text, zero letters, zero numbers inside the image
+- Zero logo or brand marks (added separately)
+- Zero generic tech icons: no circuits, no clouds, no globes
+- Zero human faces visible
+- Zero neon colors as dominant (only as accent)
+- Zero dark background (must be light/white)
+
+Composition: asymmetric, strong negative space, deliberate visual tension. Subject occupies 30-45% of frame.
+Output: high-end editorial photography or realistic product photography, NEVER cartoon, NEVER flat design.`
 }
 
-function conceituarVisualComercial(tema: string, objetivo: string, palavrasChave: string): string {
-  const mapaConceitos: Record<string, string> = {
-    'protheus': 'modern ERP dashboard interface reflected in dark glass surface, data visualization elements glowing in neon green, corporate control room atmosphere',
-    'totvs': 'sophisticated enterprise software environment, screens displaying business intelligence charts in neon green, cinematic dark blue atmosphere',
-    'fatos relevantes': 'precision financial ledger or compliance document transformed into glowing neon green data streams, dark cinematic background, metaphor for accuracy and operational control',
-    'fiscal': 'scales of justice or tax system transformed into glowing data streams, neon green highlights on deep navy',
-    'erp': 'interconnected business modules visualized as glowing geometric structures, system integration metaphor on dark background',
-    'implementação': 'architectural blueprint or strong foundation metaphor, precise lines in neon green on navy background',
-    'customização': 'precision engineering or master key metaphor on dark background with green highlights',
-    'migração': 'bridge between two architectural structures, transformation metaphor, cinematic lighting',
-    'financeiro': 'financial data streams and charts in neon green on dark background, corporate precision',
-    'comercial': 'professional handshake or strategic partnership in cinematic lighting, dark atmosphere with green accents',
+// ─── Escolha de conceito visual por tema ─────────────────────────────────────
+
+function escolherVisualComercial(
+  temaLower: string,
+  conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
+  textoPost: string
+): string {
+  // Release / versão / atualização
+  if (textoPost.toLowerCase().match(/release|versão|atualização|v12|v11|patch|upgrade|migra/)) {
+    return 'A precision mechanical gear system mid-transition, one gear replacing another with glowing neon green contact points, macro cinematic close-up against deep navy background. Metaphor for system version transition.'
   }
-  const temaLower = tema.toLowerCase()
-  for (const [chave, conceito] of Object.entries(mapaConceitos)) {
-    if (temaLower.includes(chave)) return conceito
+
+  // Licença / custo / investimento / ROI
+  if (textoPost.toLowerCase().match(/licen|investimento|custo|economia|valor|preço|contrato|compra/)) {
+    return 'A elegant digital scale or balance scale with glowing data streams on one side and green currency light on the other, dark cinematic navy environment, precise engineering aesthetic.'
   }
-  return `cinematic business metaphor representing: "${objetivo}". Inspired by: ${palavrasChave}. Deep navy blue environment with neon green accents.`
+
+  // Implantação / projeto / entrega
+  if (textoPost.toLowerCase().match(/implanta|projeto|entrega|prazo|cronograma|deploy|go.live|lançamento/)) {
+    return 'Architectural blueprint perspective view of a building foundation being laid with neon green laser alignment lines, cinematic overhead angle, deep navy environment.'
+  }
+
+  // Integração / API / conexão
+  if (textoPost.toLowerCase().match(/integra|api|conex|automação|webhook|erp|módulo|sincroniza/)) {
+    return 'Two premium metallic server racks or circuit components connecting via a glowing neon green bridge of light, cinematic dark environment, macro precision photography.'
+  }
+
+  // Financeiro / fiscal / contabilidade / SPED
+  if (textoPost.toLowerCase().match(/fiscal|financeiro|contábil|sped|nfe|nota fiscal|tribut|impostos?/)) {
+    return 'Close-up of precision financial ledger or compliance form being processed by a robotic arm with neon green light tracing the document, dark cinematic background, ultra detailed.'
+  }
+
+  // Customização / desenvolvimento / código
+  if (textoPost.toLowerCase().match(/customiz|desenvolv|código|advpl|programação|personaliz/)) {
+    return 'Master craftsman hands (viewed from above, no face) working with precision tools on a complex dark metallic surface with green glowing circuit-like engravings, macro cinematic.'
+  }
+
+  // Suporte / atendimento / parceria / consultoria
+  if (temaLower.includes('comercial') || textoPost.toLowerCase().match(/parceria|estratég|diagnóstico|consultor/)) {
+    return 'A lone professional figure in silhouette against a floor-to-ceiling window in a modern high-rise at night, the city lights in navy blue and green below, contemplative strategic positioning.'
+  }
+
+  // TOTVS / Protheus genérico
+  if (temaLower.includes('protheus') || temaLower.includes('totvs')) {
+    return 'Premium enterprise ERP dashboard interface reflected on a polished dark glass desk surface, neon green data charts floating above, cinematic corporate control room atmosphere at night.'
+  }
+
+  // Fatos relevantes / notícias / mercado
+  if (temaLower.includes('fatos') || temaLower.includes('relevantes')) {
+    return 'A dramatic close-up of a high-precision compass or navigational instrument resting on a dark surface, neon green indicator light, cinematic depth of field. Metaphor for navigating relevant information.'
+  }
+
+  // Fallback comercial
+  return `Premium corporate environment visual metaphor for: ${conceito.palavrasChave.slice(0, 3).join(', ')}. Dark navy background, neon green accent light, cinematic business photography.`
+}
+
+function escolherVisualAutoridade(
+  temaLower: string,
+  conceito: { gancho: string; palavrasChave: string[]; metafora: string | null },
+  textoPost: string
+): string {
+  const textoLower = textoPost.toLowerCase()
+
+  // IA / inteligência artificial / Claude / automação
+  if (temaLower.includes('artificial') || temaLower.includes(' ia') || temaLower.startsWith('ia') || textoLower.match(/inteligência artificial|claude|gemini|chatgpt|modelo de linguagem|llm/)) {
+    if (textoLower.match(/prioridade|todos|empresas|mercado|adoção/)) {
+      return 'Close-up of hands typing on a sleek dark laptop keyboard, a subtle holographic visualization in soft neon green glow rising from the screen, white studio background, editorial photography.'
+    }
+    if (textoLower.match(/ferramenta|usar|prático|dia a dia|trabalho|produtiv/)) {
+      return 'A single premium mechanical pencil resting on a clean white surface next to a sleek open laptop showing abstract code reflection, minimal editorial still life, one neon green accent.'
+    }
+    return 'Person viewed from behind (no face) facing a large monitor with subtle AI visualization in a minimal white-walled modern office, clean editorial composition, soft neon green highlight on screen edge.'
+  }
+
+  // Liderança / gestão / decisão / reunião
+  if (textoLower.match(/lideranç|gestão|decisão|reunião|consenso|equipe|time|cultura/)) {
+    if (textoLower.match(/medo|silêncio|concordan|pressão|constrangimento/)) {
+      return 'Empty modern boardroom with a single empty chair at the head of the table, dramatic side lighting creating deep shadows, white walls, graphite furniture. Metaphor for absent voice or avoided conversation.'
+    }
+    return 'Close-up of a single chess king piece (dark graphite) standing alone on a minimal white surface, dramatic directional lighting, deep shadows, editorial product photography.'
+  }
+
+  // Carreira / trajetória / crescimento
+  if (textoLower.match(/carreira|trajetória|crescimento|aprendizado|experiência|anos|mercado/)) {
+    return 'A minimalist staircase photographed from below looking up, graphite tones against white walls, strong geometric lines, editorial architectural photography.'
+  }
+
+  // Negócio / empresa / estratégia
+  if (textoLower.match(/negócio|empresa|estratégia|resultado|crescimento|processo/)) {
+    return 'Two abstract geometric dark forms — one sharp angular, one smooth curved — resting on a white surface, suggesting complementary forces, editorial still life photography.'
+  }
+
+  // Reflexão / pensamento / opinião
+  if (textoLower.match(/percebi|aprendi|reflexão|pensar|questão|perspectiva/)) {
+    return 'A single dark stone or architectural fragment resting on an empty white surface, long dramatic shadow from side lighting, minimal editorial photography. Metaphor for a grounding observation.'
+  }
+
+  // Fallback autoridade
+  return `Minimalist editorial still life representing: ${conceito.palavrasChave.slice(0, 2).join(' and ')}. One or two dark graphite objects on white background, dramatic side lighting, one neon green accent element, premium magazine cover aesthetic.`
 }

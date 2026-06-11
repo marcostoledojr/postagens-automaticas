@@ -1,7 +1,8 @@
 {
   "functions": {
-    "app/api/gerar/route.ts": { "maxDuration": 60 },
-    "app/api/cron/route.ts": { "maxDuration": 60 }
+    "app/api/gerar/route.ts":  { "maxDuration": 60 },
+    "app/api/cron/route.ts":   { "maxDuration": 60 },
+    "app/api/posts/avulso/route.ts": { "maxDuration": 60 }
   },
   "crons": [
     {
@@ -11,6 +12,10 @@
     {
       "path": "/api/cron",
       "schedule": "0 17 * * 1-5"
+    },
+    {
+      "path": "/api/cron",
+      "schedule": "0 12 * * 6"
     }
   ]
 }

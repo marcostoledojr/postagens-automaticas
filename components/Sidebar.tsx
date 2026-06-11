@@ -2,16 +2,17 @@
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Clock, Tags, Calendar, BarChart2,
-  Linkedin, Zap
+  Linkedin, Zap, PenLine
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const nav = [
-  { href: '/',            label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/fila',        label: 'Fila de Aprovação', icon: Clock },
-  { href: '/temas',       label: 'Temas',         icon: Tags },
-  { href: '/calendario',  label: 'Calendário',    icon: Calendar },
-  { href: '/analytics',   label: 'Analytics',     icon: BarChart2 },
+  { href: '/',           label: 'Dashboard',          icon: LayoutDashboard },
+  { href: '/fila',       label: 'Fila de Aprovação',  icon: Clock },
+  { href: '/novo-post',  label: 'Novo Post',           icon: PenLine },
+  { href: '/temas',      label: 'Temas',               icon: Tags },
+  { href: '/calendario', label: 'Calendário',          icon: Calendar },
+  { href: '/analytics',  label: 'Analytics',           icon: BarChart2 },
 ]
 
 export default function Sidebar() {

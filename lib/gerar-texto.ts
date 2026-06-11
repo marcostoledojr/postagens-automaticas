@@ -33,14 +33,15 @@ export async function gerarTextoPost(
   tema: Tema,
   fontes: FontePesquisa[],
   instrucaoBase: string,
-  exemplosAltoDesempenho: ExemploPost[] = []
+  exemplosAltoDesempenho: ExemploPost[] = [],
+  angulosRecentes: string[] = []   // ganchos/ângulos já usados no mês — não repetir
 ): Promise<PostGerado> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
 
   const tipoPost = classificarTipoPost(tema)
   const promptSistema = construirPromptSistema(tipoPost, exemplosAltoDesempenho)
-  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost)
+  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost, angulosRecentes)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -101,7 +102,7 @@ Consultoria boutique de alto valor especializada em TOTVS Protheus há quase 20 
 REGRAS DE FORMATO — TODAS OBRIGATÓRIAS E INEGOCIÁVEIS:
 - ZERO emojis. Nenhum emoji em nenhuma circunstância. Esta regra não tem exceção.
 - ZERO bullets, listas numeradas ou hífens decorativos. Texto em linguagem corrida e fluida.
-- ZERO negrito no corpo do post.
+- ZERO negrito, itálico, sublinhado ou qualquer marcação markdown no corpo do post. ZERO asteriscos (**texto**), ZERO underscores (_texto_), ZERO qualquer formatação inline. Texto puro, sem exceção.
 - ZERO "a gente" como sujeito. Marcos escreve em primeira pessoa do singular: "eu vejo", "encontro", "percebo". Quando precisar falar da empresa: "na Oficina1", "o time da Oficina1", "chegamos".
 - ZERO linguagem de agência: "entregamos soluções", "nossa metodologia", "nosso portfólio".
 - Tamanho entre 200 e 300 palavras. Nunca ultrapassar 350.
@@ -111,11 +112,12 @@ REGRAS DE FORMATO — TODAS OBRIGATÓRIAS E INEGOCIÁVEIS:
 ERROS DE LINGUAGEM PROIBIDOS:
 - "consultando Protheus" referindo-se à empresa. Correto: "especializada em Protheus", "20 anos de consultoria em Protheus".
 - Listar clientes por nome com adjetivos genéricos ("cada uma com sua complexidade"). Se mencionar clientes, trazer contexto real e específico.
-- "quebrou" ou "consertou" referindo-se a sistema ERP. Correto: "falhou", "travou", "apresentou inconsistências", "estabilizar", "corrigir".
+- "quebrou", "quebrar", "pode quebrar", "vai quebrar" ou "consertou" referindo-se a sistema ERP. Correto: "falhou", "travou", "apresentou inconsistências", "parou de funcionar", "estabilizar", "corrigir".
 - Construções com "a gente" repetido. Correto: primeira pessoa do singular ou coletivo correto.
 - Referências ao mascote ou animais da TOTVS sem contexto. Remover completamente.
 - Ordem de palavras invertida: "o que de novo veio". Correto: "o que chegou de novo".
 - Frases ambíguas com duplo sentido involuntário.
+- Siglas em inglês sem contexto para o leitor de negócios brasileiro (FOMO, ROI etc.) devem ser evitadas ou explicadas brevemente na frase.
 
 NUNCA USAR: linguagem de volume, ticket, chamado, commodity, "horas de consultoria", "suporte técnico". Sempre falar em segurança operacional, visibilidade de dados, continuidade de negócio, parceria estratégica.
 
@@ -132,7 +134,7 @@ ESTRUTURA OBRIGATÓRIA:
 TIPO: POST COMERCIAL DA OFICINA1
 Objetivo: gerar negócio diretamente. Fala de dores reais do Protheus, soluções da Oficina1, cases genéricos.
 - Mencione @Oficina1 de forma natural quando a empresa for protagonista da solução ou insight (ex: "Na @Oficina1 o time sênior entra para virar essa chave").
-- Termina com CTA leve: "Me manda uma DM" ou "Comenta [palavra-chave] aqui".
+- Termina OBRIGATORIAMENTE com este formato exato de CTA duplo: "Me manda uma DM ou comente [PALAVRA] aqui." — onde [PALAVRA] é UMA palavra em MAIÚSCULAS totais, altamente relevante ao tema específico do post (exemplos: "comente RELEASE aqui", "comente PROTHEUS aqui", "comente INTEGRAÇÃO aqui", "comente LICENÇA aqui", "comente MIGRAÇÃO aqui"). Escolha a palavra mais precisa para o tema abordado.
 - A Oficina1 aparece no texto como parceiro estratégico, nunca como vendor de commodity.
 - Nunca usar: "suporte técnico", "chamado", "ticket", "horas de consultoria".`
     : `
@@ -169,18 +171,27 @@ CHECKLIST DE REVISÃO ANTES DE ENTREGAR — verifique cada item e reescreva se n
 - Existe emoji? → Remover sem exceção.
 - Existe "a gente" como sujeito? → Substituir.
 - Existe bullet, lista ou hífen decorativo? → Reescrever em prosa.
-- Existe negrito? → Remover.
+- Existe asterisco (**), underscore (_), ou QUALQUER marcação markdown no corpo? → Remover TUDO. Texto puro apenas.
+- Existe negrito ou itálico em qualquer forma? → Remover.
+- Existe "quebrar", "pode quebrar" ou "quebrou" referindo-se a ERP/sistema? → Substituir por "falhar", "travar", "apresentar inconsistência".
+- Existe sigla em inglês sem contexto (FOMO, ROI, KPI)? → Explicar ou substituir por termo em português.
 - Existe erro de concordância? → Corrigir.
 - A primeira linha tem mais de 12 palavras? → Enxugar.
 - A última frase (antes da assinatura) termina no vago? → Reescrever com impacto.
 - A assinatura NÃO deve estar presente no texto gerado.
 - As hashtags têm acento correto? → Corrigir se necessário.
-- O post soa como Marcos ou como agência de conteúdo? → Reescrever se soar como agência.`
+- O post soa como Marcos ou como agência de conteúdo? → Reescrever se soar como agência.
+- É post comercial? O CTA termina com "Me manda uma DM ou comente [PALAVRA] aqui."? → Corrigir se não estiver neste formato exato.`
 
   return base + tipoInstrucao + exemplosTexto + revisao
 }
 
-function construirPromptUsuario(tema: Tema, fontes: FontePesquisa[], tipo: 'comercial' | 'autoridade'): string {
+function construirPromptUsuario(
+  tema: Tema,
+  fontes: FontePesquisa[],
+  tipo: 'comercial' | 'autoridade',
+  angulosRecentes: string[] = []
+): string {
   const fontesTexto = fontes.length > 0
     ? `\nINFORMAÇÕES RELEVANTES DO DIA (use como inspiração, nunca copie literalmente):\n${
         fontes.map((f, i) => `${i + 1}. ${f.titulo}\n   ${f.resumo}`).join('\n')
@@ -194,15 +205,23 @@ function construirPromptUsuario(tema: Tema, fontes: FontePesquisa[], tipo: 'come
 - PROIBIDO qualquer menção a serviços, clientes ou aspectos comerciais da Oficina1
 - Tom reflexivo e pessoal, Marcos fala como profissional e pensador`
 
+  // Instrução anti-repetição: lista os ângulos já usados este mês
+  const antiRepeticao = angulosRecentes.length > 0
+    ? `\nÂNGULOS JÁ USADOS NOS ÚLTIMOS 30 DIAS PARA ESTE TEMA — NÃO REPITA NENHUM DESTES:
+${angulosRecentes.map((a, i) => `${i + 1}. "${a}"`).join('\n')}
+O novo post DEVE abordar um ângulo, metáfora ou situação completamente diferente dos listados acima.`
+    : ''
+
   return `Escreva um post para o LinkedIn com o tema: "${tema.nome}"
 
 OBJETIVO: ${tema.objetivo}
 TOM: ${tema.tom}
 ${fontesTexto}
+${antiRepeticao}
 
 LEMBRETES PARA ESTE POST:
 ${lembretesTipo}
-- Escreva APENAS o post completo, do gancho à assinatura + hashtags
+- Escreva APENAS o post completo, do gancho às hashtags
 - Nenhum comentário ou explicação antes ou depois do post
 - O post deve soar como o Marcos escreveu, nunca como gerado por IA
 - NÃO inclua assinatura no post gerado

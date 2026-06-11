@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { gerarPostsParaAmanha } from '@/lib/motor-geracao'
+import { gerarPostsParaAmanha, gerarResumoSemanal } from '@/lib/motor-geracao'
 import { publicarPostLinkedIn } from '@/lib/linkedin'
 import { coletarMetricas } from '@/lib/metricas'
 
@@ -23,14 +23,28 @@ export async function GET(req: NextRequest) {
 
   const agora = new Date()
   const hora = agora.getHours() // UTC
+  const diaSemana = agora.getDay() // UTC — no horário 12h UTC (9h BRT) o dia já é o correto
   // Brasília = UTC-3, então:
-  // 9h Brasília = 12h UTC
+  // 9h Brasília  = 12h UTC
   // 14h Brasília = 17h UTC
+  // Sábado 9h BRT = Sábado 12h UTC → diaSemana === 6
 
   const resultados: Record<string, any> = {}
 
-  // === TAREFA 1: Geração de posts (roda às 12h UTC / 9h Brasília) ===
-  if (hora === 12) {
+  // === TAREFA 1A: Sábado — gerar resumo da semana ===
+  if (hora === 12 && diaSemana === 6) {
+    console.log('[CRON] Sábado — gerando resumo semanal...')
+    try {
+      const resultado = await gerarResumoSemanal()
+      resultados.resumoSemanal = resultado
+    } catch (err: any) {
+      resultados.resumoSemanal = { erro: err.message }
+      console.error('[CRON] Erro no resumo semanal:', err)
+    }
+  }
+
+  // === TAREFA 1B: Geração de posts para amanhã (Seg-Sex às 12h UTC / 9h Brasília) ===
+  if (hora === 12 && diaSemana >= 1 && diaSemana <= 5) {
     console.log('[CRON] Iniciando geração de posts para amanhã...')
     try {
       const resultado = await gerarPostsParaAmanha({ diasAFrente: 1 })
