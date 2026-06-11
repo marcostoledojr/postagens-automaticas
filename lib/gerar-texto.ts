@@ -164,20 +164,31 @@ function separarTextoEHashtags(textoCompleto: string, hashtagsTema: string[]): {
   textoLimpo: string
   hashtags: string[]
 } {
-  const linhas = textoCompleto.trim().split('\n')
-  const ultimaLinha = linhas[linhas.length - 1] ?? ''
+  // Normaliza quebras de linha (Windows \r\n → \n)
+  const normalizado = textoCompleto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  const linhas = normalizado.split('\n')
 
-  let hashtags: string[] = []
-  let textoLimpo = textoCompleto.trim()
-
-  // Verifica se a última linha contém hashtags
-  if (ultimaLinha.includes('#')) {
-    hashtags = (ultimaLinha.match(/#[\wÀ-ÿ]+/g) ?? [])
-    textoLimpo = linhas.slice(0, -1).join('\n').trim()
+  // Busca as linhas de hashtag de baixo para cima (modelo às vezes usa 1-2 linhas)
+  let primeiraLinhaHashtag = linhas.length
+  for (let i = linhas.length - 1; i >= Math.max(0, linhas.length - 4); i--) {
+    const linha = linhas[i].trim()
+    if (linha === '') continue
+    if (linha.includes('#')) {
+      primeiraLinhaHashtag = i
+    } else {
+      break
+    }
   }
 
-  // Adiciona hashtags do tema se não tiverem
-  const todasHashtags = Array.from(new Set([...hashtags, ...hashtagsTema]))
+  const linhasHashtag = linhas.slice(primeiraLinhaHashtag)
+  const textoLimpo = linhas.slice(0, primeiraLinhaHashtag).join('\n').trim()
+
+  // Regex permissivo: # + qualquer coisa não-espaço (captura acentos sem problemas)
+  const hashtagsExtraidas = (linhasHashtag.join(' ').match(/#\S+/g) ?? [])
+    .map(h => h.replace(/[.,!?;:'"]+$/, '')) // remove pontuação no fim
+    .filter(h => h.length > 1)
+
+  const todasHashtags = Array.from(new Set([...hashtagsExtraidas, ...hashtagsTema]))
 
   return { textoLimpo, hashtags: todasHashtags }
 }

@@ -1,9 +1,8 @@
 'use client'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Clock, Tags, Calendar, BarChart2,
-  Linkedin, Zap, Settings
+  Linkedin, Zap
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -17,6 +16,13 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  function navegar(href: string) {
+    router.push(href)
+    router.refresh()
+  }
+
   return (
     <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0">
       {/* Logo */}
@@ -35,11 +41,11 @@ export default function Sidebar() {
       {/* Navegação */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {nav.map(({ href, label, icon: Icon }) => (
-          <Link
+          <button
             key={href}
-            href={href}
+            onClick={() => navegar(href)}
             className={clsx(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
               pathname === href
                 ? 'bg-blue-600 text-white'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -47,7 +53,7 @@ export default function Sidebar() {
           >
             <Icon size={18} />
             {label}
-          </Link>
+          </button>
         ))}
       </nav>
 
