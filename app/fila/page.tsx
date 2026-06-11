@@ -59,6 +59,7 @@ export default function FilaAprovacao() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
+  const [progressoGeracao, setProgressoGeracao] = useState<{ atual: number; total: number; tema: string } | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -130,16 +131,56 @@ export default function FilaAprovacao() {
   async function zerarEGerar() {
     if (!confirm('Apagar todos os posts pendentes e gerar novos (1 por tema)?')) return
     setZerando(true)
+    setProgressoGeracao({ atual: 0, total: 0, tema: '' })
+
     try {
-      const res = await fetch('/api/gerar', {
+      // 1. Apaga pendentes
+      const delRes = await fetch('/api/gerar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acao: 'zerar_e_gerar' }),
+        body: JSON.stringify({ acao: 'zerar' }),
       })
-      const data = await res.json()
-      alert(`✅ Gerados: ${data.gerados} | ❌ Erros: ${data.erros}`)
+      if (!delRes.ok) throw new Error('Erro ao apagar pendentes')
+
+      // 2. Busca temas ativos
+      const temasRes = await fetch('/api/temas')
+      const temasData = await temasRes.json()
+      const temas: { id: string; nome: string }[] = (temasData.temas ?? []).filter((t: any) => t.ativo)
+
+      if (temas.length === 0) {
+        alert('Nenhum tema ativo encontrado.')
+        setZerando(false)
+        return
+      }
+
+      const horarios = ['09:00', '11:00', '13:00', '15:00', '17:00']
+      let gerados = 0
+      let erros = 0
+
+      // 3. Gera 1 post por tema — chamada individual (< 60s cada)
+      for (let i = 0; i < temas.length; i++) {
+        const tema = temas[i]
+        setProgressoGeracao({ atual: i + 1, total: temas.length, tema: tema.nome })
+
+        const res = await fetch('/api/gerar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            acao: 'gerar_tema',
+            tema_id: tema.id,
+            horario: horarios[i % horarios.length],
+          }),
+        })
+        if (res.ok) { gerados++ } else { erros++ }
+
+        await carregar() // atualiza a lista a cada post gerado
+      }
+
+      alert(`✅ Gerados: ${gerados} | ❌ Erros: ${erros}`)
       setTabAtiva('pendente')
-      await carregar()
-    } catch { alert('Erro ao zerar e gerar. Tente novamente.') }
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`)
+    }
+
+    setProgressoGeracao(null)
     setZerando(false)
   }
 
@@ -185,6 +226,24 @@ export default function FilaAprovacao() {
           </button>
         </div>
       </div>
+
+      {/* Barra de progresso de geração */}
+      {progressoGeracao && (
+        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-sm text-blue-700 font-medium">
+              Gerando {progressoGeracao.atual} de {progressoGeracao.total}: {progressoGeracao.tema}
+            </span>
+            <span className="text-xs text-blue-500">{Math.round((progressoGeracao.atual / progressoGeracao.total) * 100)}%</span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-1.5">
+            <div
+              className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${(progressoGeracao.atual / progressoGeracao.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Tabs de filtro */}
       <div className="flex gap-1 mb-5 border-b border-slate-200">
