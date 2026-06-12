@@ -31,30 +31,35 @@ export async function GET(req: NextRequest) {
 
   const resultados: Record<string, any> = {}
 
-  // === TAREFA 1A: Sábado — gerar resumo da semana ===
-  if (hora === 12 && diaSemana === 6) {
-    console.log('[CRON] Sábado — gerando resumo semanal...')
-    try {
-      const resultado = await gerarResumoSemanal()
-      resultados.resumoSemanal = resultado
-    } catch (err: any) {
-      resultados.resumoSemanal = { erro: err.message }
-      console.error('[CRON] Erro no resumo semanal:', err)
-    }
-  }
-
-  // === TAREFA 1B: Geração de posts para amanhã (Seg-Sex às 12h UTC / 9h Brasília) ===
+  // === TAREFA 1A: Geração de posts para o próximo dia útil (Seg-Sex às 12h UTC / 9h Brasília) ===
   if (hora === 12 && diaSemana >= 1 && diaSemana <= 5) {
-    console.log('[CRON] Iniciando geração de posts para amanhã...')
+    console.log('[CRON] Iniciando geração de posts para o próximo dia útil...')
     try {
-      const resultado = await gerarPostsParaAmanha({ diasAFrente: 1 })
+      // Sexta-feira: gera 3 dias à frente para cobrir a segunda (sáb+dom são pulados pelo motor)
+      const diasAFrente = diaSemana === 5 ? 3 : 1
+      const resultado = await gerarPostsParaAmanha({ diasAFrente })
       resultados.geracao = resultado
       console.log(`[CRON] Posts gerados: ${resultado.gerados}, erros: ${resultado.erros}`)
     } catch (err: any) {
       resultados.geracao = { erro: err.message }
       console.error('[CRON] Erro na geração:', err)
     }
+
+    // Sexta-feira: também gera o resumo semanal (para aprovação antes do sábado)
+    if (diaSemana === 5) {
+      console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
+      try {
+        const resultado = await gerarResumoSemanal()
+        resultados.resumoSemanal = resultado
+      } catch (err: any) {
+        resultados.resumoSemanal = { erro: err.message }
+        console.error('[CRON] Erro no resumo semanal:', err)
+      }
+    }
   }
+
+  // === Sábado: publicar resumo aprovado (sem geração — foi gerado na sexta) ===
+  // A publicação acontece via TAREFA 2 abaixo (publicarPostsAgendados)
 
   // === TAREFA 2: Publicação de posts (roda às 12h e 17h UTC) ===
   if (hora === 12 || hora === 17) {

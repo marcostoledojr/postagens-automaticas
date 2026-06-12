@@ -358,13 +358,13 @@ LEMBRETES:
       }
     }
 
-    // Agenda para hoje (sábado) às 10:00 ou amanhã se já passou das 10h
+    // Agenda para o próximo sábado às 10:00 BRT (13:00 UTC)
+    // Quando chamado na sexta, addDays(hoje, 1) = sábado
+    // Quando chamado no sábado (fallback), addDays(hoje, 0) = hoje
     const agora = new Date()
-    let dataPublicacao = new Date(agora)
-    dataPublicacao.setHours(10, 0, 0, 0)
-    if (agora.getHours() >= 10) {
-      dataPublicacao = addDays(dataPublicacao, 1)
-    }
+    const diasAteSabado = agora.getDay() === 6 ? 0 : 1 // sexta(5)+1=sáb, sáb(6)+0=hoje
+    let dataPublicacao = addDays(agora, diasAteSabado)
+    dataPublicacao.setUTCHours(13, 0, 0, 0) // 13h UTC = 10h BRT
 
     const { error } = await supabase.from('posts').insert({
       tema_nome: 'Resumo da Semana',
