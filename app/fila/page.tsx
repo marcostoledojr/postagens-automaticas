@@ -59,7 +59,7 @@ export default function FilaAprovacao() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
-  const [diasGerar, setDiasGerar] = useState(5)
+  const [diasGerar, setDiasGerar] = useState(7)
   const [mostrarOpcoes, setMostrarOpcoes] = useState(false)
   const [progressoGeracao, setProgressoGeracao] = useState<{ atual: number; total: number; tema: string } | null>(null)
 
@@ -132,7 +132,7 @@ export default function FilaAprovacao() {
 
   // Apaga apenas posts pendentes — sem gerar nada
   async function zerar() {
-    if (!confirm('Apagar todos os posts PENDENTES? (aprovados e publicados não são afetados)')) return
+    if (!confirm('Apagar todos os posts pendentes (ainda não aprovados)? Posts aprovados e publicados não serão afetados.')) return
     setZerando(true)
     try {
       const res = await fetch('/api/gerar', {
@@ -161,7 +161,7 @@ export default function FilaAprovacao() {
         = slotsData.slots ?? []
 
       if (slots.length === 0) {
-        alert(`Nenhum slot vazio encontrado nos próximos ${diasGerar} dias. A agenda está completa.`)
+        alert(`Nenhum slot vazio nos próximos ${diasGerar} dias úteis. Todos os slots já estão preenchidos — clique em "Zerar" primeiro se quiser regenerar.`)
         setGerando(false)
         setProgressoGeracao(null)
         return
@@ -236,7 +236,7 @@ export default function FilaAprovacao() {
                 className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-3 py-2 rounded-l-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 <Sparkles size={13} className={gerando ? 'animate-pulse' : ''} />
-                {gerando ? 'Gerando...' : `Gerar posts (${diasGerar}d)`}
+                {gerando ? 'Gerando...' : `Gerar posts (${diasGerar} dias úteis)`}
               </button>
               <button
                 onClick={() => setMostrarOpcoes(prev => !prev)}
@@ -249,8 +249,8 @@ export default function FilaAprovacao() {
             </div>
             {mostrarOpcoes && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-3 min-w-40">
-                <p className="text-xs font-medium text-slate-500 mb-2">Gerar para quantos dias à frente?</p>
-                {[1, 2, 3, 5, 7, 10].map(d => (
+                <p className="text-xs font-medium text-slate-500 mb-2">Dias úteis à frente:</p>
+                {[3, 5, 7, 10].map(d => (
                   <button
                     key={d}
                     onClick={() => { setDiasGerar(d); setMostrarOpcoes(false) }}
@@ -260,7 +260,7 @@ export default function FilaAprovacao() {
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {d} {d === 1 ? 'dia' : 'dias'} {d === 5 ? '(semana)' : d === 10 ? '(2 semanas)' : ''}
+                    {d} dias úteis {d === 5 ? '(1 semana)' : d === 10 ? '(2 semanas)' : ''}
                   </button>
                 ))}
               </div>
@@ -337,169 +337,4 @@ export default function FilaAprovacao() {
           {posts.map((post) => {
             const aberto = expandido === post.id
             const estaEditando = editando === post.id
-            const previa = post.texto.slice(0, 90).replace(/\n/g, ' ') + (post.texto.length > 90 ? '…' : '')
-
-            return (
-              <div key={post.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                {/* Linha do cabeçalho — sempre visível, clicável */}
-                <div
-                  className="px-5 py-3.5 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors"
-                  onClick={() => toggle(post.id)}
-                >
-                  <span
-                    className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full text-white"
-                    style={{ backgroundColor: TEMA_CORES[post.tema_nome] ?? '#6366f1' }}
-                  >
-                    {post.tema_nome}
-                  </span>
-
-                  {post.data_agendada && (
-                    <span className="shrink-0 text-xs text-slate-400">
-                      {format(new Date(post.data_agendada), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                    </span>
-                  )}
-
-                  <span className="flex-1 text-sm text-slate-500 truncate hidden sm:block">
-                    {previa}
-                  </span>
-
-                  {post.editado_por_usuario && (
-                    <span className="shrink-0 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                      Editado
-                    </span>
-                  )}
-
-                  {/* Botão excluir — para TODOS os status */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deletar(post.id) }}
-                    disabled={!!salvando}
-                    className="shrink-0 text-slate-300 hover:text-red-400 transition-colors p-1"
-                    title="Excluir permanentemente"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-
-                  <span className="shrink-0 text-slate-400">
-                    {aberto ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </span>
-                </div>
-
-                {/* Conteúdo expandido */}
-                {aberto && (
-                  <div className="border-t border-slate-100">
-                    <div className="p-5">
-                      <div className="flex gap-5">
-                        {post.imagem_url && (
-                          <div className="shrink-0">
-                            <img
-                              src={post.imagem_url}
-                              alt="Imagem do post"
-                              className="w-36 h-36 rounded-xl object-cover border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => window.open(post.imagem_url!, '_blank')}
-                              title="Clique para ampliar"
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          {estaEditando ? (
-                            <textarea
-                              value={textoEdit}
-                              onChange={(e) => setTextoEdit(e.target.value)}
-                              className="w-full h-52 text-sm text-slate-800 border border-blue-300 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              autoFocus
-                            />
-                          ) : (
-                            <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
-                              {post.texto}
-                            </p>
-                          )}
-                          {post.hashtags?.length > 0 && !estaEditando && (
-                            <div className="flex flex-wrap gap-1.5 mt-3">
-                              {post.hashtags.map((h: string) => (
-                                <span key={h} className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                                  {h}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Fontes */}
-                      {post.fontes_pesquisa?.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-slate-100">
-                          <p className="text-xs font-medium text-slate-400 mb-1.5">Fontes de pesquisa:</p>
-                          <ul className="space-y-1">
-                            {post.fontes_pesquisa.map((f: any, i: number) => (
-                              <li key={i} className="text-xs text-slate-400">
-                                • <a href={f.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">{f.titulo}</a>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Barra de ações */}
-                    <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                      {/* Ações esquerdas */}
-                      <div className="flex items-center gap-2">
-                        {tabAtiva === 'pendente' && (
-                          estaEditando ? (
-                            <>
-                              <button onClick={() => salvarEdicao(post.id)} disabled={!!salvando}
-                                className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                                Salvar
-                              </button>
-                              <button onClick={() => setEditando(null)}
-                                className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5">
-                                Cancelar
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => { setEditando(post.id); setTextoEdit(post.texto) }}
-                                className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white transition-colors">
-                                <Edit3 size={13} /> Editar
-                              </button>
-                              <button onClick={() => regenerar(post.id)} disabled={!!salvando}
-                                className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white disabled:opacity-50 transition-colors">
-                                <RefreshCw size={13} className={salvando === post.id ? 'animate-spin' : ''} /> Regerar
-                              </button>
-                            </>
-                          )
-                        )}
-
-                        {tabAtiva === 'rejeitado' && (
-                          <button onClick={() => restaurar(post.id)} disabled={!!salvando}
-                            className="flex items-center gap-1.5 text-sm text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
-                            <RotateCcw size={13} /> Restaurar para pendente
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Ações direitas — só para pendente */}
-                      {tabAtiva === 'pendente' && !estaEditando && (
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => rejeitar(post.id)} disabled={!!salvando}
-                            className="flex items-center gap-1.5 text-sm text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors">
-                            <XCircle size={14} /> Rejeitar
-                          </button>
-                          <button onClick={() => aprovar(post.id)} disabled={!!salvando}
-                            className="flex items-center gap-1.5 bg-green-600 text-white text-sm px-5 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
-                            <CheckCircle size={14} />
-                            {salvando === post.id ? 'Salvando...' : 'Aprovar'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
+       

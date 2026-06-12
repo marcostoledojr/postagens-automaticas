@@ -66,12 +66,18 @@ export async function GET(req: NextRequest) {
     dia_label: string
   }> = []
 
-  for (let d = 1; d <= dias; d++) {
+  // Itera por dias corridos até encontrar `dias` dias ÚTEIS
+  let diasUteisEncontrados = 0
+  let d = 0
+  while (diasUteisEncontrados < dias) {
+    d++
+    if (d > 60) break // safety — nunca mais de 60 dias à frente
     const dia = addDays(new Date(), d)
     const diaSemana = dia.getDay()
 
     // Pula domingo (0) e sábado (6)
     if (diaSemana === 0 || diaSemana === 6) continue
+    diasUteisEncontrados++
 
     const { manha, tarde } = resolverTemas(diaSemana)
     const candidatos = [
@@ -104,5 +110,4 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ slots, total: slots.length })
-}
+  return NextResponse.json({ slots, total: slots.leng
