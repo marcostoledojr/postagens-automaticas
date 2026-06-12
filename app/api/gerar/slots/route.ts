@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   // Helper: encontra tema por keywords no nome
   function encontrar(keywords: string[]) {
-    return temas.find(t =>
+    return (temas ?? []).find(t =>
       keywords.some(k => t.nome.toLowerCase().includes(k.toLowerCase()))
     ) ?? null
   }
