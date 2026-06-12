@@ -17,13 +17,14 @@ type Post = {
   editado_por_usuario: boolean
 }
 
-type StatusTab = 'pendente' | 'agendado' | 'publicado' | 'rejeitado'
+type StatusTab = 'pendente' | 'agendado' | 'publicado' | 'rejeitado' | 'erro'
 
 const TABS: { status: StatusTab; label: string; emptyMsg: string }[] = [
   { status: 'pendente',   label: 'Pendentes',  emptyMsg: 'Nenhum post pendente. Clique em "Gerar posts" ou aguarde as 9h.' },
   { status: 'agendado',   label: 'Agendados',  emptyMsg: 'Nenhum post agendado para publicação.' },
   { status: 'publicado',  label: 'Publicados', emptyMsg: 'Nenhum post publicado ainda.' },
   { status: 'rejeitado',  label: 'Rejeitados', emptyMsg: 'Nenhum post rejeitado.' },
+  { status: 'erro',       label: 'Erros',      emptyMsg: 'Nenhum erro de publicação.' },
 ]
 
 const TEMA_CORES: Record<string, string> = {
@@ -38,6 +39,7 @@ const TAB_CORES: Record<StatusTab, string> = {
   agendado:  'text-green-600 border-green-600',
   publicado: 'text-slate-600 border-slate-600',
   rejeitado: 'text-red-600 border-red-600',
+  erro:      'text-orange-600 border-orange-600',
 }
 
 const BADGE_CORES: Record<StatusTab, string> = {
@@ -45,12 +47,13 @@ const BADGE_CORES: Record<StatusTab, string> = {
   agendado:  'bg-green-100 text-green-700',
   publicado: 'bg-slate-100 text-slate-600',
   rejeitado: 'bg-red-100 text-red-600',
+  erro:      'bg-orange-100 text-orange-600',
 }
 
 export default function FilaAprovacao() {
   const [tabAtiva, setTabAtiva] = useState<StatusTab>('pendente')
   const [postsPorStatus, setPostsPorStatus] = useState<Record<StatusTab, Post[]>>({
-    pendente: [], agendado: [], publicado: [], rejeitado: [],
+    pendente: [], agendado: [], publicado: [], rejeitado: [], erro: [],
   })
   const [loading, setLoading] = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
@@ -73,7 +76,7 @@ export default function FilaAprovacao() {
       TABS.map(t => fetch(`/api/posts?status=${t.status}`, { cache: 'no-store' }).then(r => r.json()))
     )
     const novo: Record<StatusTab, Post[]> = {
-      pendente: [], agendado: [], publicado: [], rejeitado: [],
+      pendente: [], agendado: [], publicado: [], rejeitado: [], erro: [],
     }
     TABS.forEach((t, i) => { novo[t.status] = resultados[i].posts ?? [] })
     setPostsPorStatus(novo)
@@ -448,13 +451,13 @@ export default function FilaAprovacao() {
                               autoFocus
                             />
                             <div className="flex gap-2 mt-2">
-                              <input
-                                type="text"
+                              <textarea
                                 value={instrucaoRefinar}
                                 onChange={(e) => setInstrucaoRefinar(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && refinarComIA(post.id)}
+                                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), refinarComIA(post.id))}
                                 placeholder="Ex: remova os valores em reais, deixe proporcional ao tamanho da empresa"
-                                className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                rows={3}
+                                className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
                               />
                               <button
                                 onClick={() => refinarComIA(post.id)}
@@ -532,6 +535,13 @@ export default function FilaAprovacao() {
                           <button onClick={() => restaurar(post.id)} disabled={!!salvando}
                             className="flex items-center gap-1.5 text-sm text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
                             <RotateCcw size={13} /> Restaurar para pendente
+                          </button>
+                        )}
+
+                        {tabAtiva === 'erro' && (
+                          <button onClick={() => restaurar(post.id)} disabled={!!salvando}
+                            className="flex items-center gap-1.5 text-sm text-orange-600 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-50 disabled:opacity-50 transition-colors">
+                            <RotateCcw size={13} /> Tentar novamente
                           </button>
                         )}
                       </div>

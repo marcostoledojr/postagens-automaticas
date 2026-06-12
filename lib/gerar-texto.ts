@@ -268,7 +268,7 @@ function separarTextoEHashtags(textoCompleto: string, hashtagsTema: string[]): {
     .map(h => h.replace(/[.,!?;:'"]+$/, ''))
     .filter(h => h.length > 1)
 
-  const todasHashtags = Array.from(new Set([...hashtagsExtraidas, ...hashtagsTema]))
+  const todasHashtags = Array.from(new Set(['#Oficina1', ...hashtagsExtraidas, ...hashtagsTema]))
 
   return { textoLimpo, hashtags: todasHashtags }
 }

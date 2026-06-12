@@ -9,12 +9,33 @@
  * Esta abordagem elimina a necessidade de gerenciar tokens OAuth diretamente
  */
 
+// ID numérico da página Oficina1 no LinkedIn
+const OFICINA1_ORG_URN = 'urn:li:organization:2958968'
+
 type PostParaPublicar = {
   id: string
   texto: string
   hashtags: string[]
   imagem_url: string | null
   tema_nome: string
+}
+
+/**
+ * Detecta @Oficina1 no texto e retorna dados de menção para a API do LinkedIn.
+ * O LinkedIn precisa da posição exata do texto a ser marcado como menção.
+ */
+function extrairMencoes(texto: string) {
+  const mencoes: { urn: string; start: number; length: number }[] = []
+  const regex = /@Oficina1/gi
+  let match
+  while ((match = regex.exec(texto)) !== null) {
+    mencoes.push({
+      urn: OFICINA1_ORG_URN,
+      start: match.index,
+      length: match[0].length,
+    })
+  }
+  return mencoes
 }
 
 export async function publicarPostLinkedIn(post: PostParaPublicar): Promise<string> {
@@ -27,12 +48,21 @@ export async function publicarPostLinkedIn(post: PostParaPublicar): Promise<stri
     : ''
   const textoCompleto = post.texto + hashtagsTexto
 
+  // Detecta menções ao @Oficina1 para o LinkedIn API
+  const mencoes = extrairMencoes(textoCompleto)
+
   const payload = {
     post_id: post.id,
     texto: textoCompleto,
     imagem_url: post.imagem_url ?? null,
     tema: post.tema_nome,
     timestamp: new Date().toISOString(),
+    // Menções para o módulo LinkedIn do Make.com (campo "Mentioned Entities")
+    mencoes: mencoes.length > 0 ? mencoes : undefined,
+    // Primeiro URN de menção para mapeamento simples no Make.com
+    mencao_urn: mencoes.length > 0 ? mencoes[0].urn : undefined,
+    mencao_start: mencoes.length > 0 ? mencoes[0].start : undefined,
+    mencao_length: mencoes.length > 0 ? mencoes[0].length : undefined,
   }
 
   const res = await fetch(webhookUrl, {
