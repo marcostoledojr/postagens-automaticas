@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { publicarPostLinkedIn } from '@/lib/linkedin'
+import { enviarAlertaErro } from '@/lib/email'
 
 export const maxDuration = 60
 
@@ -46,6 +47,12 @@ export async function POST(
       .from('posts')
       .update({ status: 'erro', erro_publicacao: err.message })
       .eq('id', id)
+
+    await enviarAlertaErro({
+      fluxo: 'Publicação LinkedIn',
+      erro: err.message,
+      detalhes: `Post ID: ${id} | Tema: ${post.tema_nome} | Agendado: ${post.data_agendada}`,
+    })
 
     return NextResponse.json({ erro: err.message }, { status: 500 })
   }

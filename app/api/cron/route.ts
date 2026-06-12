@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase-server'
 import { gerarPostsParaAmanha, gerarResumoSemanal } from '@/lib/motor-geracao'
 import { publicarPostLinkedIn } from '@/lib/linkedin'
 import { coletarMetricas } from '@/lib/metricas'
+import { enviarAlertaErro } from '@/lib/email'
 
 export async function GET(req: NextRequest) {
   // Verifica autenticação do cron
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
     } catch (err: any) {
       resultados.geracao = { erro: err.message }
       console.error('[CRON] Erro na geração:', err)
+      await enviarAlertaErro({ fluxo: 'Geração de Posts', erro: err.message })
     }
 
     // Sexta-feira: também gera o resumo semanal (para aprovação antes do sábado)
@@ -51,9 +53,13 @@ export async function GET(req: NextRequest) {
       try {
         const resultado = await gerarResumoSemanal()
         resultados.resumoSemanal = resultado
+        if (!resultado.gerado && resultado.erro) {
+          await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: resultado.erro })
+        }
       } catch (err: any) {
         resultados.resumoSemanal = { erro: err.message }
         console.error('[CRON] Erro no resumo semanal:', err)
+        await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: err.message })
       }
     }
   }
@@ -67,9 +73,18 @@ export async function GET(req: NextRequest) {
     try {
       const publicados = await publicarPostsAgendados()
       resultados.publicacao = publicados
+      // Alerta se houve erros de publicação
+      if (publicados.erros && publicados.erros.length > 0) {
+        await enviarAlertaErro({
+          fluxo: 'Publicação LinkedIn',
+          erro: `${publicados.erros.length} post(s) falharam`,
+          detalhes: publicados.erros.join('\n'),
+        })
+      }
     } catch (err: any) {
       resultados.publicacao = { erro: err.message }
       console.error('[CRON] Erro na publicação:', err)
+      await enviarAlertaErro({ fluxo: 'Publicação LinkedIn (Cron)', erro: err.message })
     }
   }
 
