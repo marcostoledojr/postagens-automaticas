@@ -440,6 +440,7 @@ export default function FilaAprovacao() {
                         )}
                         <div className="flex-1 min-w-0">
                           {estaEditando ? (
+                            <>
                             <textarea
                               value={textoEdit}
                               onChange={(e) => setTextoEdit(e.target.value)}
@@ -464,6 +465,7 @@ export default function FilaAprovacao() {
                                 {refinando ? 'Refinando...' : 'Refinar com IA'}
                               </button>
                             </div>
+                            </>
                           ) : (
                             <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
                               {post.texto}
