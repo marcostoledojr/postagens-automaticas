@@ -58,6 +58,8 @@ export default function FilaAprovacao() {
   const [textoEdit, setTextoEdit] = useState('')
   const [salvando, setSalvando] = useState<string | null>(null)
   const [publicando, setPublicando] = useState<string | null>(null)
+  const [refinando, setRefinando] = useState(false)
+  const [instrucaoRefinar, setInstrucaoRefinar] = useState('')
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [diasGerar, setDiasGerar] = useState(7)
@@ -130,6 +132,25 @@ export default function FilaAprovacao() {
       alert(`❌ Erro: ${e.message}`)
     }
     setPublicando(null)
+  }
+
+  async function refinarComIA(id: string) {
+    if (!instrucaoRefinar.trim()) return
+    setRefinando(true)
+    try {
+      const res = await fetch(`/api/posts/${id}/refinar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto: textoEdit, instrucao: instrucaoRefinar }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.erro ?? 'Erro ao refinar')
+      setTextoEdit(data.texto)
+      setInstrucaoRefinar('')
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`)
+    }
+    setRefinando(false)
   }
 
   async function salvarEdicao(id: string) {
@@ -425,6 +446,24 @@ export default function FilaAprovacao() {
                               className="w-full h-52 text-sm text-slate-800 border border-blue-300 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                               autoFocus
                             />
+                            <div className="flex gap-2 mt-2">
+                              <input
+                                type="text"
+                                value={instrucaoRefinar}
+                                onChange={(e) => setInstrucaoRefinar(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && refinarComIA(post.id)}
+                                placeholder="Ex: remova os valores em reais, deixe proporcional ao tamanho da empresa"
+                                className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                              />
+                              <button
+                                onClick={() => refinarComIA(post.id)}
+                                disabled={refinando || !instrucaoRefinar.trim()}
+                                className="flex items-center gap-1.5 text-sm bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                              >
+                                <Sparkles size={13} className={refinando ? 'animate-pulse' : ''} />
+                                {refinando ? 'Refinando...' : 'Refinar com IA'}
+                              </button>
+                            </div>
                           ) : (
                             <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
                               {post.texto}

@@ -4,6 +4,7 @@
     "app/api/cron/route.ts":           { "maxDuration": 60 },
     "app/api/posts/avulso/route.ts":   { "maxDuration": 60 },
     "app/api/posts/[id]/publicar/route.ts": { "maxDuration": 60 },
+    "app/api/posts/[id]/refinar/route.ts":   { "maxDuration": 60 },
     "app/api/teste-imagem/route.ts":   { "maxDuration": 60 }
   },
   "crons": [
