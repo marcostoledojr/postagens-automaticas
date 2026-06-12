@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 
 export const maxDuration = 60
-
-const client = new Anthropic()
 
 export async function POST(
   req: NextRequest,
@@ -15,8 +12,17 @@ export async function POST(
     return NextResponse.json({ erro: 'texto e instrucao são obrigatórios' }, { status: 400 })
   }
 
-  try {
-    const message = await client.messages.create({
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: `Você é um editor de posts para LinkedIn da Oficina1, empresa especializada em TOTVS Protheus.
@@ -36,11 +42,15 @@ Retorne APENAS o texto ajustado, sem explicações, sem aspas, sem prefácio.`,
           content: `Instrução de ajuste: ${instrucao}\n\nTexto atual do post:\n${texto}`,
         },
       ],
-    })
+    }),
+  })
 
-    const textoRefinado = message.content[0].type === 'text' ? message.content[0].text : ''
-    return NextResponse.json({ texto: textoRefinado.trim() })
-  } catch (err: any) {
-    return NextResponse.json({ erro: err.message }, { status: 500 })
+  if (!res.ok) {
+    const err = await res.text()
+    return NextResponse.json({ erro: `Anthropic API error: ${res.status} - ${err}` }, { status: 500 })
   }
+
+  const data = await res.json()
+  const textoRefinado = data.content?.[0]?.text ?? ''
+  return NextResponse.json({ texto: textoRefinado.trim() })
 }
