@@ -110,4 +110,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ slots, total: slots.leng
+  return NextResponse.json({ slots, total: slots.length })
+}
