@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { CheckCircle, XCircle, Edit3, RefreshCw, ChevronDown, ChevronUp, Trash2, RotateCcw, Sparkles } from 'lucide-react'
+import { CheckCircle, XCircle, Edit3, RefreshCw, ChevronDown, ChevronUp, Trash2, RotateCcw, Sparkles, Send } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -57,6 +57,7 @@ export default function FilaAprovacao() {
   const [editando, setEditando] = useState<string | null>(null)
   const [textoEdit, setTextoEdit] = useState('')
   const [salvando, setSalvando] = useState<string | null>(null)
+  const [publicando, setPublicando] = useState<string | null>(null)
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [diasGerar, setDiasGerar] = useState(7)
@@ -85,7 +86,7 @@ export default function FilaAprovacao() {
     setSalvando(id)
     await fetch(`/api/posts/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'aprovado' }),
+      body: JSON.stringify({ status: 'agendado' }),
     })
     await carregar(); setSalvando(null)
   }
@@ -113,6 +114,22 @@ export default function FilaAprovacao() {
       body: JSON.stringify({ status: 'pendente' }),
     })
     await carregar(); setSalvando(null)
+  }
+
+  async function publicarAgora(id: string) {
+    if (!confirm('Publicar este post agora no LinkedIn?')) return
+    setPublicando(id)
+    try {
+      const res = await fetch(`/api/posts/${id}/publicar`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.erro ?? 'Erro ao publicar')
+      alert('✅ Post publicado no LinkedIn!')
+      await carregar()
+      setTabAtiva('publicado')
+    } catch (e: any) {
+      alert(`❌ Erro: ${e.message}`)
+    }
+    setPublicando(null)
   }
 
   async function salvarEdicao(id: string) {
@@ -479,6 +496,16 @@ export default function FilaAprovacao() {
                       </div>
 
                       {/* Ações direitas — só para pendente */}
+                      {tabAtiva === 'agendado' && (
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => publicarAgora(post.id)} disabled={!!publicando}
+                            className="flex items-center gap-1.5 bg-green-600 text-white text-sm px-5 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            <Send size={14} className={publicando === post.id ? 'animate-pulse' : ''} />
+                            {publicando === post.id ? 'Publicando...' : 'Publicar agora'}
+                          </button>
+                        </div>
+                      )}
+
                       {tabAtiva === 'pendente' && !estaEditando && (
                         <div className="flex items-center gap-2">
                           <button onClick={() => rejeitar(post.id)} disabled={!!salvando}

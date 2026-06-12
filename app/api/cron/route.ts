@@ -94,7 +94,7 @@ async function publicarPostsAgendados() {
   const { data: posts } = await supabase
     .from('posts')
     .select('*')
-    .eq('status', 'aprovado')
+    .eq('status', 'agendado')
     .gte('data_agendada', janela.toISOString())
     .lte('data_agendada', janelaFim.toISOString())
 
