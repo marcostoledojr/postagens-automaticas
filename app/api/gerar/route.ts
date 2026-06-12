@@ -58,7 +58,8 @@ export async function POST(req: NextRequest) {
       const [hh, mm] = horario.split(':').map(Number)
       // Aceita data_iso explícita (vindo do endpoint de slots) ou usa amanhã
       const diaBase = body.data_iso ? new Date(body.data_iso) : addDays(new Date(), 1)
-      const dataSlot = setSeconds(setMinutes(setHours(diaBase, hh), mm), 0)
+      // Vercel roda em UTC. Horários são BRT (UTC-3), então +3h para UTC correto.
+      const dataSlot = setSeconds(setMinutes(setHours(diaBase, hh + 3), mm), 0)
 
       // Busca ângulos já usados nos últimos 30 dias para este tema (anti-repetição)
       const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)

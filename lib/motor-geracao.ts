@@ -109,7 +109,9 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
     for (const slot of slots) {
       const tema = slot.tema!
       const [hh, mm] = slot.horario.split(':').map(Number)
-      const dataSlot = setSeconds(setMinutes(setHours(dia, hh), mm), 0)
+      // Vercel roda em UTC. Horários são BRT (UTC-3), então +3h para UTC correto.
+      // 09:00 BRT → 12:00 UTC | 14:00 BRT → 17:00 UTC
+      const dataSlot = setSeconds(setMinutes(setHours(dia, hh + 3), mm), 0)
 
       // Verifica se já existe post aprovado/publicado para este slot
       const { data: existente } = await supabase
