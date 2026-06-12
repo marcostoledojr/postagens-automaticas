@@ -291,7 +291,7 @@ export default function FilaAprovacao() {
             {mostrarOpcoes && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-3 min-w-40">
                 <p className="text-xs font-medium text-slate-500 mb-2">Dias úteis à frente:</p>
-                {[3, 5, 7, 10].map(d => (
+                {[1, 3, 5, 7, 10].map(d => (
                   <button
                     key={d}
                     onClick={() => { setDiasGerar(d); setMostrarOpcoes(false) }}
@@ -301,7 +301,7 @@ export default function FilaAprovacao() {
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {d} dias úteis {d === 5 ? '(1 semana)' : d === 10 ? '(2 semanas)' : ''}
+                    {d === 1 ? '1 dia útil (2 posts)' : `${d} dias úteis${d === 5 ? ' (1 semana)' : d === 10 ? ' (2 semanas)' : ''}`}
                   </button>
                 ))}
               </div>
