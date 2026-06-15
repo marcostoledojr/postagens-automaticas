@@ -156,7 +156,7 @@ export default async function Dashboard() {
                   <p className="text-xs text-slate-400 mt-0.5">
                     {post.tema_nome} •{' '}
                     {post.data_agendada
-                      ? format(new Date(post.data_agendada), "dd/MM 'às' HH:mm")
+                      ? format(new Date(new Date(post.data_agendada).getTime() - 3 * 60 * 60 * 1000), "dd/MM 'às' HH:mm")
                       : '—'}
                   </p>
                 </div>

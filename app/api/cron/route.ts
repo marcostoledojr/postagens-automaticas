@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     try {
       const publicados = await publicarPostsAgendados()
       resultados.publicacao = publicados
+
       // Alerta se houve erros de publicação
       if (publicados.erros && publicados.erros.length > 0) {
         await enviarAlertaErro({
@@ -80,6 +81,28 @@ export async function GET(req: NextRequest) {
           erro: `${publicados.erros.length} post(s) falharam`,
           detalhes: publicados.erros.join('\n'),
         })
+      }
+
+      // Alerta se não havia nenhum post para publicar mas há posts agendados no dia
+      if (publicados.publicados === 0 && publicados.erros?.length === 0) {
+        const supabase = createClient()
+        const inicioDia = new Date(agora)
+        inicioDia.setUTCHours(0, 0, 0, 0)
+        const fimDia = new Date(agora)
+        fimDia.setUTCHours(23, 59, 59, 999)
+        const { data: agendadosHoje } = await supabase
+          .from('posts')
+          .select('id, tema_nome, data_agendada')
+          .eq('status', 'agendado')
+          .gte('data_agendada', inicioDia.toISOString())
+          .lte('data_agendada', fimDia.toISOString())
+        if (agendadosHoje && agendadosHoje.length > 0) {
+          await enviarAlertaErro({
+            fluxo: 'Publicação LinkedIn',
+            erro: 'Cron rodou mas não encontrou posts na janela de publicação',
+            detalhes: `Posts agendados para hoje mas fora da janela:\n${agendadosHoje.map(p => `• ${p.tema_nome} — ${p.data_agendada}`).join('\n')}`,
+          })
+        }
       }
     } catch (err: any) {
       resultados.publicacao = { erro: err.message }

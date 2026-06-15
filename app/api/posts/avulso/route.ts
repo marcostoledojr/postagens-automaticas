@@ -88,13 +88,13 @@ export async function POST(req: NextRequest) {
     // Gera imagem
     const imagem = await gerarImagem(titulo, temaVirtual.objetivo, postGerado.texto, tipoFinal)
 
-    // Monta data de publicação em hora local (Brasil)
-    // new Date("YYYY-MM-DD") interpreta como UTC midnight → setHours fica errado.
-    // Parseamos como data local para preservar o dia e hora corretos.
+    // Monta data de publicação convertendo BRT → UTC (+3h)
+    // Vercel roda em UTC: setHours(dia, hh) guardaria 09:00 UTC = 06:00 BRT (ERRADO)
+    // Com +3: setHours(dia, hh + 3) guarda 12:00 UTC = 09:00 BRT (CORRETO)
     const [hh, mm] = horario.split(':').map(Number)
     const [ano, mes, dia] = data.split('-').map(Number)
     const dataBase = new Date(ano, mes - 1, dia)  // local midnight
-    const dataPublicacao = setSeconds(setMinutes(setHours(dataBase, hh), mm), 0)
+    const dataPublicacao = setSeconds(setMinutes(setHours(dataBase, hh + 3), mm), 0)
 
     // Salva como pendente
     const { data: postSalvo, error } = await supabase.from('posts').insert({

@@ -86,7 +86,9 @@ export async function GET(req: NextRequest) {
     ].filter(s => s.tema !== null)
 
     for (const candidato of candidatos) {
-      const dataSlot = setSeconds(setMinutes(setHours(dia, candidato.hora), 0), 0)
+      // +3h: converte BRT → UTC (Vercel roda em UTC)
+      // 09:00 BRT = 12:00 UTC | 14:00 BRT = 17:00 UTC
+      const dataSlot = setSeconds(setMinutes(setHours(dia, candidato.hora + 3), 0), 0)
 
       // Verifica se slot já está ocupado (qualquer status exceto rejeitado)
       const { data: existente } = await supabase
