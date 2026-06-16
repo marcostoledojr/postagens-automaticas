@@ -130,8 +130,12 @@ async function publicarPostsAgendados() {
   const supabase = createClient()
   const agora = new Date()
 
-  // Janela de 35 minutos ao redor do horário atual
-  const janela = new Date(agora.getTime() - 5 * 60 * 1000) // 5min atrás
+  // Plano Hobby do Vercel: cron tem janela flexível de até 1h
+  // Ex: cron das 12:00 UTC pode disparar às 12:47 UTC
+  // Solução: buscar desde o início da hora UTC atual até 30min à frente
+  const inicioDaHora = new Date(agora)
+  inicioDaHora.setUTCMinutes(0, 0, 0)
+  const janela = inicioDaHora                                    // ex: 12:00 UTC
   const janelaFim = new Date(agora.getTime() + 30 * 60 * 1000) // 30min à frente
 
   const { data: posts } = await supabase
