@@ -4,8 +4,8 @@
  * Usado pela UI para mostrar o que será gerado e fazer chamadas individuais.
  *
  * Agenda fixa:
- *   Seg(1)/Qua(3)/Sex(5) → 09:00=Comercial, 14:00=Fatos TOTVS
- *   Ter(2)/Qui(4)         → 09:00=Autoridade, 14:00=Inteligência Artificial
+ *   Seg(1)/Qua(3)/Sex(5) → 08:00=Comercial, 13:00=Fatos TOTVS
+ *   Ter(2)/Qui(4)         → 08:00=Autoridade, 13:00=Inteligência Artificial
  *   Sáb(6)               → gerarResumoSemanal (não listado aqui)
  *   Dom(0)               → sem posts
  */
@@ -15,8 +15,8 @@ import { createClient } from '@/lib/supabase-server'
 import { addDays, setHours, setMinutes, setSeconds, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-const SLOT_MANHA = 9
-const SLOT_TARDE = 14
+const SLOT_MANHA = 8
+const SLOT_TARDE = 13
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 

@@ -23,8 +23,8 @@ type ConfigGeracao = {
 
 // ─── Mapeamento fixo de slots ────────────────────────────────────────────────
 
-const SLOT_MANHA = '09:00'
-const SLOT_TARDE = '14:00'
+const SLOT_MANHA = '08:00'
+const SLOT_TARDE = '13:00'
 
 /**
  * Dada uma lista de temas e um dia da semana, retorna qual tema vai em cada slot.
@@ -110,7 +110,7 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
       const tema = slot.tema!
       const [hh, mm] = slot.horario.split(':').map(Number)
       // Vercel roda em UTC. Horários são BRT (UTC-3), então +3h para UTC correto.
-      // 09:00 BRT → 12:00 UTC | 14:00 BRT → 17:00 UTC
+      // 08:00 BRT → 11:00 UTC | 13:00 BRT → 16:00 UTC
       const dataSlot = setSeconds(setMinutes(setHours(dia, hh + 3), mm), 0)
 
       // Verifica se já existe post aprovado/publicado para este slot
@@ -366,7 +366,7 @@ LEMBRETES:
     const agora = new Date()
     const diasAteSabado = agora.getDay() === 6 ? 0 : 1 // sexta(5)+1=sáb, sáb(6)+0=hoje
     let dataPublicacao = addDays(agora, diasAteSabado)
-    dataPublicacao.setUTCHours(13, 0, 0, 0) // 13h UTC = 10h BRT
+    dataPublicacao.setUTCHours(11, 0, 0, 0) // 11h UTC = 08h BRT
 
     const { error } = await supabase.from('posts').insert({
       tema_nome: 'Resumo da Semana',

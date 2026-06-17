@@ -1,11 +1,11 @@
 /**
  * Endpoint do Cron Job - executado automaticamente pelo Vercel Cron
- * Configurado no vercel.json para rodar às 9h (horário de Brasília = 12:00 UTC)
+ * Horários (UTC → BRT):
+ *   10:00 UTC = 07:00 BRT → Geração de posts (Seg-Sex)
+ *   11:00 UTC = 08:00 BRT → Publicação manhã (Seg-Sáb)
+ *   16:00 UTC = 13:00 BRT → Publicação tarde (Seg-Sex)
  *
- * Responsabilidades:
- * 1. Gerar posts para o dia seguinte (às 9h)
- * 2. Publicar posts aprovados que estão no horário (às 9h e 14h)
- * 3. Coletar métricas de posts publicados recentemente
+ * Obs: Plano Hobby tem janela flexível de até 1h — crons podem disparar com atraso.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,19 +24,19 @@ export async function GET(req: NextRequest) {
 
   const agora = new Date()
   const hora = agora.getHours() // UTC
-  const diaSemana = agora.getDay() // UTC — no horário 12h UTC (9h BRT) o dia já é o correto
-  // Brasília = UTC-3, então:
-  // 9h Brasília  = 12h UTC
-  // 14h Brasília = 17h UTC
-  // Sábado 9h BRT = Sábado 12h UTC → diaSemana === 6
+  const diaSemana = agora.getDay()
+  // Brasília = UTC-3:
+  // 07h BRT = 10h UTC → geração
+  // 08h BRT = 11h UTC → publicação manhã
+  // 13h BRT = 16h UTC → publicação tarde
 
   const resultados: Record<string, any> = {}
 
-  // === TAREFA 1A: Geração de posts para o próximo dia útil (Seg-Sex às 12h UTC / 9h Brasília) ===
-  if (hora === 12 && diaSemana >= 1 && diaSemana <= 5) {
+  // === TAREFA 1: Geração de posts para o próximo dia útil (10h UTC / 7h BRT, Seg-Sex) ===
+  if (hora === 10 && diaSemana >= 1 && diaSemana <= 5) {
     console.log('[CRON] Iniciando geração de posts para o próximo dia útil...')
     try {
-      // Sexta-feira: gera 3 dias à frente para cobrir a segunda (sáb+dom são pulados pelo motor)
+      // Sexta: gera 3 dias à frente para cobrir segunda (sáb+dom pulados pelo motor)
       const diasAFrente = diaSemana === 5 ? 3 : 1
       const resultado = await gerarPostsParaAmanha({ diasAFrente })
       resultados.geracao = resultado
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       await enviarAlertaErro({ fluxo: 'Geração de Posts', erro: err.message })
     }
 
-    // Sexta-feira: também gera o resumo semanal (para aprovação antes do sábado)
+    // Sexta: também gera o resumo semanal (agendado para sábado às 11h UTC / 8h BRT)
     if (diaSemana === 5) {
       console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
       try {
@@ -62,13 +62,20 @@ export async function GET(req: NextRequest) {
         await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: err.message })
       }
     }
+
+    // Coleta métricas junto com a geração (uma vez por dia)
+    console.log('[CRON] Coletando métricas de engajamento...')
+    try {
+      const metricas = await coletarMetricasRecentes()
+      resultados.metricas = metricas
+    } catch (err: any) {
+      resultados.metricas = { erro: err.message }
+      console.error('[CRON] Erro ao coletar métricas:', err)
+    }
   }
 
-  // === Sábado: publicar resumo aprovado (sem geração — foi gerado na sexta) ===
-  // A publicação acontece via TAREFA 2 abaixo (publicarPostsAgendados)
-
-  // === TAREFA 2: Publicação de posts (roda às 12h e 17h UTC) ===
-  if (hora === 12 || hora === 17) {
+  // === TAREFA 2: Publicação de posts (11h UTC / 8h BRT e 16h UTC / 13h BRT) ===
+  if (hora === 11 || hora === 16) {
     console.log('[CRON] Verificando posts para publicar agora...')
     try {
       const publicados = await publicarPostsAgendados()
@@ -111,17 +118,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // === TAREFA 3: Coleta de métricas (roda uma vez por dia às 12h UTC) ===
-  if (hora === 12) {
-    console.log('[CRON] Coletando métricas de engajamento...')
-    try {
-      const metricas = await coletarMetricasRecentes()
-      resultados.metricas = metricas
-    } catch (err: any) {
-      resultados.metricas = { erro: err.message }
-      console.error('[CRON] Erro ao coletar métricas:', err)
-    }
-  }
+  // Métricas: coletadas junto com a geração (hora === 10), bloco removido daqui
 
   return NextResponse.json({ hora_utc: hora, ...resultados })
 }
