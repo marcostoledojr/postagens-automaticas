@@ -261,12 +261,18 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
     }
 
     try {
+      // Posts com ID fake (make_) são pulados dentro de coletarMetricas — não conta como coletado
+      if (!post.linkedin_post_id || post.linkedin_post_id.startsWith('make_')) {
+        pulados++
+        continue
+      }
       await coletarMetricas(post.id, post.linkedin_post_id)
       coletados++
       // Pausa entre chamadas para não sobrecarregar a API
       await new Promise(r => setTimeout(r, 500))
     } catch (err) {
       console.error(`[Métricas] Erro post ${post.id}:`, err)
+      pulados++
     }
   }
 

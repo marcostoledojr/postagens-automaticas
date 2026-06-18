@@ -85,10 +85,12 @@ function Analytics() {
       } else {
         const { reparo, coleta } = json
         const msgs = []
-        if (reparo.reparados > 0) msgs.push(`${reparo.reparados} ID(s) de post recuperado(s)`)
-        if (coleta.coletados > 0) msgs.push(`${coleta.coletados} post(s) com métricas atualizadas`)
-        if (msgs.length === 0) msgs.push('Nenhuma métrica nova (posts ainda sem LinkedIn ID real)')
-        setNotificacao(`✓ ${msgs.join(' · ')}`)
+        if (reparo.reparados > 0) msgs.push(`${reparo.reparados} ID(s) de post recuperado(s) no LinkedIn`)
+        if (coleta.coletados > 0) msgs.push(`${coleta.coletados} post(s) com métricas coletadas`)
+        if (coleta.pulados > 0 && coleta.coletados === 0) {
+          msgs.push(`${coleta.pulados} post(s) sem ID real do LinkedIn — veja instrução abaixo`)
+        }
+        setNotificacao(msgs.length > 0 ? `✓ ${msgs.join(' · ')}` : '⚠ Nenhum post com ID real do LinkedIn encontrado.')
         await carregar()
       }
     } catch (err: any) {
@@ -227,6 +229,23 @@ function Analytics() {
           {linkedin?.conectado ? 'Reconectar' : 'Conectar LinkedIn'}
         </a>
       </div>
+
+      {/* Banner instrução Make.com — aparece enquanto não há dados reais */}
+      {linkedin?.conectado && metricas.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+          <p className="text-sm font-semibold text-amber-900 mb-2">📋 Configure o Make.com para enviar o ID real do LinkedIn</p>
+          <p className="text-sm text-amber-800 mb-3">
+            Os posts foram publicados via Make.com, mas o ID real do post do LinkedIn não foi retornado.
+            Para ativar as métricas, o cenário do Make.com precisa devolver o ID do LinkedIn na resposta do webhook.
+          </p>
+          <ol className="text-sm text-amber-800 space-y-1 list-decimal list-inside">
+            <li>Abra o cenário no <strong>Make.com</strong> que publica posts no LinkedIn</li>
+            <li>No módulo de resposta ao webhook (último módulo), adicione um campo: <code className="bg-amber-100 px-1 rounded">linkedin_post_id</code></li>
+            <li>Mapeie o valor para o <strong>ID do post</strong> retornado pelo módulo LinkedIn (geralmente chamado <em>ID</em> ou <em>URN</em> no output do módulo)</li>
+            <li>Salve e teste — os próximos posts publicados pelo sistema terão ID real e as métricas começarão a ser coletadas automaticamente</li>
+          </ol>
+        </div>
+      )}
 
       {/* Cards de totais */}
       <div className="grid grid-cols-5 gap-4 mb-6">
