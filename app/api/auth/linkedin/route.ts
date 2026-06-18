@@ -21,11 +21,13 @@ export async function GET(req: NextRequest) {
 
   const redirectUri = `${appUrl}/api/auth/linkedin/callback`
 
-  // Escopos disponíveis para apps LinkedIn padrão:
+  // Escopos:
   // openid + profile + email → autenticação e person URN (via /v2/userinfo)
-  // w_member_social → publicar posts e ler estatísticas dos próprios posts
-  // Nota: r_member_social exige LinkedIn Marketing Partner Program (não disponível)
-  const scope = 'openid profile email w_member_social'
+  // w_member_social → publicar posts
+  // r_member_postAnalytics → analytics de posts pessoais (impressões, reações, etc.)
+  //   Requer: Community Management API aprovada no LinkedIn Developer Portal
+  //   Link de cadastro: https://developer.linkedin.com → seu app → Products → Community Management API
+  const scope = 'openid profile email w_member_social r_member_postAnalytics'
 
   const url = new URL('https://www.linkedin.com/oauth/v2/authorization')
   url.searchParams.set('response_type', 'code')

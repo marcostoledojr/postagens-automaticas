@@ -1,9 +1,12 @@
 /**
  * Coleta de métricas de engajamento do LinkedIn
  *
- * Endpoint: memberShareStatistics (perfil pessoal)
- * Retorna: impressões, cliques, curtidas, comentários, compartilhamentos, taxa de engajamento
- * Escopo necessário: r_member_social
+ * Endpoint: /rest/memberCreatorPostAnalytics (Creator Analytics API)
+ * Retorna: impressões, reações, comentários, compartilhamentos, link clicks
+ * Escopo necessário: r_member_postAnalytics (Community Management API — self-serve)
+ * Versão mínima da API: LinkedIn-Version: 202506
+ *
+ * Para ativar: LinkedIn Developer Portal → seu app → Products → Community Management API
  *
  * Janela de coleta por post:
  *   0–7 dias após publicação   → coleta diária   (algoritmo LinkedIn empurra conteúdo recente)
@@ -17,12 +20,14 @@ import { createClient } from './supabase-server'
 
 async function getLinkedInConfig(): Promise<{
   token: string | null
+  analyticsToken: string | null
   personUrn: string | null
 }> {
   // Prioridade 1: env var (compatibilidade com configuração manual)
   if (process.env.LINKEDIN_ACCESS_TOKEN) {
     return {
       token: process.env.LINKEDIN_ACCESS_TOKEN,
+      analyticsToken: process.env.LINKEDIN_ANALYTICS_TOKEN ?? null,
       personUrn: process.env.LINKEDIN_PERSON_URN ?? null,
     }
   }
@@ -31,7 +36,10 @@ async function getLinkedInConfig(): Promise<{
   const { data } = await supabase
     .from('configuracoes')
     .select('chave, valor')
-    .in('chave', ['linkedin_access_token', 'linkedin_token_expiry', 'linkedin_person_urn'])
+    .in('chave', [
+      'linkedin_access_token', 'linkedin_token_expiry', 'linkedin_person_urn',
+      'linkedin_analytics_token', 'linkedin_analytics_token_expiry',
+    ])
 
   const map = Object.fromEntries((data ?? []).map((r: any) => [r.chave, r.valor]))
 
@@ -39,13 +47,50 @@ async function getLinkedInConfig(): Promise<{
   const expiry = map['linkedin_token_expiry'] ?? null
   const personUrn = map['linkedin_person_urn'] ?? null
 
-  // Token expirado?
-  if (token && expiry && new Date(expiry) < new Date()) {
-    console.warn('[Métricas] LinkedIn token expirado em', expiry)
-    return { token: null, personUrn: null }
-  }
+  const analyticsToken = map['linkedin_analytics_token'] ?? null
+  const analyticsExpiry = map['linkedin_analytics_token_expiry'] ?? null
 
-  return { token, personUrn }
+  // Token de publicação expirado?
+  const publishToken = (token && expiry && new Date(expiry) < new Date()) ? null : token
+
+  // Token de analytics expirado?
+  const validAnalyticsToken = (analyticsToken && analyticsExpiry && new Date(analyticsExpiry) < new Date())
+    ? null
+    : analyticsToken
+
+  if (!publishToken) console.warn('[Métricas] LinkedIn token de publicação expirado ou ausente')
+  if (!validAnalyticsToken) console.warn('[Métricas] LinkedIn token de analytics ausente — conecte o app de analytics')
+
+  return { token: publishToken, analyticsToken: validAnalyticsToken, personUrn }
+}
+
+export async function getLinkedInAnalyticsStatus(): Promise<{
+  conectado: boolean
+  expiraEm: string | null
+  diasRestantes: number | null
+}> {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('configuracoes')
+    .select('chave, valor')
+    .in('chave', ['linkedin_analytics_token', 'linkedin_analytics_token_expiry'])
+
+  const map = Object.fromEntries((data ?? []).map((r: any) => [r.chave, r.valor]))
+  const token = map['linkedin_analytics_token']
+  const expiry = map['linkedin_analytics_token_expiry']
+
+  if (!token) return { conectado: false, expiraEm: null, diasRestantes: null }
+
+  const expiryDate = expiry ? new Date(expiry) : null
+  const expirado = expiryDate ? expiryDate < new Date() : false
+
+  if (expirado) return { conectado: false, expiraEm: expiry, diasRestantes: 0 }
+
+  const diasRestantes = expiryDate
+    ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null
+
+  return { conectado: true, expiraEm: expiry, diasRestantes }
 }
 
 export async function getLinkedInStatus(): Promise<{
@@ -77,78 +122,102 @@ export async function getLinkedInStatus(): Promise<{
   return { conectado: true, expiraEm: expiry, diasRestantes }
 }
 
+// ─── Helpers da Creator Analytics API ────────────────────────────────────────
+
+/**
+ * Monta o parâmetro `entity` para a API memberCreatorPostAnalytics.
+ * Formato esperado pelo LinkedIn:
+ *   share URN   → (share:urn%3Ali%3Ashare%3A{ID})
+ *   ugcPost URN → (ugc:urn%3Ali%3AugcPost%3A{ID})
+ */
+function buildEntityParam(linkedinPostId: string): string {
+  if (linkedinPostId.includes('ugcPost')) {
+    const id = linkedinPostId.replace('urn:li:ugcPost:', '')
+    return `(ugc:urn%3Ali%3AugcPost%3A${id})`
+  } else {
+    const id = linkedinPostId.replace('urn:li:share:', '')
+    return `(share:urn%3Ali%3Ashare%3A${id})`
+  }
+}
+
 // ─── Coleta de métricas de um post ───────────────────────────────────────────
 
-// Retorna true se conseguiu salvar algum dado (mesmo zeros), false se pulou/sem token
+/**
+ * Coleta métricas de um post via memberCreatorPostAnalytics (Creator Analytics API).
+ * Scope necessário: r_member_postAnalytics (Community Management API).
+ * Retorna true se salvou dados, false se pulou (ID inválido ou sem token).
+ */
 export async function coletarMetricas(postId: string, linkedinPostId: string): Promise<boolean> {
   if (!linkedinPostId || linkedinPostId.startsWith('make_')) {
     console.warn(`[Métricas] Post ${postId} sem LinkedIn ID real. Pulando.`)
     return false
   }
 
-  const { token, personUrn } = await getLinkedInConfig()
-  if (!token) {
-    console.warn('[Métricas] Token não configurado ou expirado.')
+  const { token, analyticsToken } = await getLinkedInConfig()
+
+  // Usa token de analytics (r_member_postAnalytics) se disponível
+  // Caso contrário, tenta com token de publicação (pode não ter permissão)
+  const activeToken = analyticsToken ?? token
+  if (!activeToken) {
+    console.warn('[Métricas] Nenhum token LinkedIn disponível.')
     return false
   }
-  if (!personUrn) {
-    console.warn('[Métricas] LinkedIn person URN não encontrado.')
-    return false
+  if (!analyticsToken) {
+    console.warn('[Métricas] Token de analytics não configurado — conecte o app de analytics em /analytics')
   }
 
   const supabase = createClient()
-  const encoded = encodeURIComponent(linkedinPostId)
-  const personEncoded = encodeURIComponent(personUrn)
   const headers: HeadersInit = {
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${activeToken}`,
     'X-Restli-Protocol-Version': '2.0.0',
-    'LinkedIn-Version': '202401',
+    'LinkedIn-Version': '202506',
   }
 
-  let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0, taxaEngajamento = 0
+  let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0
 
   try {
-    // Tentativa 1: memberShareStatistics (precisa de r_member_social — pode retornar 403)
-    const res = await fetch(
-      `https://api.linkedin.com/v2/memberShareStatistics?q=actor&actor=${personEncoded}&shares[0]=${encoded}`,
-      { headers }
-    )
+    const entityParam = buildEntityParam(linkedinPostId)
+    const baseUrl = 'https://api.linkedin.com/rest/memberCreatorPostAnalytics'
 
-    if (res.ok) {
-      const data = await res.json()
-      const stats = data.elements?.[0]?.totalShareStatistics ?? {}
-      impressoes        = stats.impressionCount ?? 0
-      curtidas          = stats.likeCount ?? 0
-      comentarios       = stats.commentCount ?? 0
-      compartilhamentos = stats.shareCount ?? 0
-      cliques           = stats.clickCount ?? 0
-      taxaEngajamento   = stats.engagement ?? 0
-      console.log(`[Métricas] memberShareStatistics OK para ${postId}`)
-    } else {
-      console.warn(`[Métricas] memberShareStatistics ${res.status} — tentando socialActions`)
+    // A API retorna uma métrica por chamada — fazemos 5 chamadas em sequência
+    const metricTypes = [
+      { key: 'IMPRESSION', set: (v: number) => { impressoes = v } },
+      { key: 'REACTION',   set: (v: number) => { curtidas = v } },
+      { key: 'COMMENT',    set: (v: number) => { comentarios = v } },
+      { key: 'RESHARE',    set: (v: number) => { compartilhamentos = v } },
+      { key: 'LINK_CLICKS', set: (v: number) => { cliques = v } },
+    ]
 
-      // Tentativa 2: socialActions (curtidas + comentários, funciona com w_member_social)
-      const res2 = await fetch(`https://api.linkedin.com/v2/socialActions/${encoded}`, { headers })
-      if (res2.ok) {
-        const data2 = await res2.json()
-        curtidas    = data2.likesSummary?.totalLikes ?? 0
-        comentarios = data2.commentsSummary?.totalFirstLevelComments ?? 0
-        console.log(`[Métricas] socialActions OK para ${postId}: ${curtidas} curtidas, ${comentarios} comentários`)
+    for (const metric of metricTypes) {
+      const url = `${baseUrl}?q=entity&entity=${entityParam}&queryType=${metric.key}&aggregation=TOTAL`
+      const res = await fetch(url, { headers })
+
+      if (res.ok) {
+        const data = await res.json()
+        const count = data.elements?.[0]?.count ?? 0
+        metric.set(count)
       } else {
-        console.warn(`[Métricas] socialActions ${res2.status} — salvando registro com zeros (será atualizado)`)
+        const errText = await res.text().catch(() => '')
+        console.warn(`[Métricas] Creator Analytics ${metric.key} → ${res.status}: ${errText.slice(0, 120)}`)
+        // Se 403 com SCOPE_NOT_APPROVED: o app ainda não tem r_member_postAnalytics
+        if (res.status === 403 && errText.includes('SCOPE_NOT_APPROVED')) {
+          console.error('[Métricas] AÇÃO NECESSÁRIA: ative Community Management API no LinkedIn Developer Portal')
+          break
+        }
       }
+
+      await new Promise(r => setTimeout(r, 300)) // respeita rate limit (100 calls/membro/24h)
     }
+
+    console.log(`[Métricas] Creator Analytics OK para ${postId}: ${impressoes} impressões, ${curtidas} reações, ${comentarios} comentários`)
   } catch (err) {
     console.error(`[Métricas] Erro na coleta do post ${postId}:`, err)
   }
 
-  // Sempre salva o registro — mesmo com zeros, marca que o post está monitorado
-  // Próximas coletas automáticas vão atualizar os valores
-  const score = taxaEngajamento > 0
-    ? parseFloat((taxaEngajamento * 100).toFixed(4))
-    : impressoes > 0
-      ? parseFloat(((curtidas + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
-      : curtidas + comentarios * 3 + compartilhamentos * 5
+  // Calcula score de engajamento
+  const score = impressoes > 0
+    ? parseFloat(((curtidas + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
+    : curtidas + comentarios * 3 + compartilhamentos * 5
 
   const payload = {
     impressoes,
@@ -175,7 +244,7 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
     if (error) console.error(`[Métricas] Erro ao inserir post ${postId}:`, error.message)
   }
 
-  console.log(`[Métricas] Salvo post ${postId}: ${impressoes} impressões, ${curtidas} curtidas → score ${score}`)
+  console.log(`[Métricas] Salvo post ${postId}: ${impressoes} impressões → score ${score}`)
   return true
 }
 

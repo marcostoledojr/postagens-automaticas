@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { buscarResumoTemas, getLinkedInStatus, analisarMelhoresHorarios } from '@/lib/metricas'
+import { buscarResumoTemas, getLinkedInStatus, getLinkedInAnalyticsStatus, analisarMelhoresHorarios } from '@/lib/metricas'
 
 export async function GET(req: NextRequest) {
   const supabase = createClient()
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const dias = Number(searchParams.get('dias') ?? '30')
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: metricas }, resumoTemas, linkedinStatus, melhoresHorarios] = await Promise.all([
+  const [{ data: metricas }, resumoTemas, linkedinStatus, linkedinAnalyticsStatus, melhoresHorarios] = await Promise.all([
     supabase
       .from('metricas')
       .select('*, posts(texto, tema_nome, publicado_em, horario_publicacao)')
@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
       .limit(50),
     buscarResumoTemas(dias),
     getLinkedInStatus(),
-    analisarMelhoresHorarios(Math.max(dias, 60)), // sempre 60 dias mínimo para análise de horário
+    getLinkedInAnalyticsStatus(),
+    analisarMelhoresHorarios(Math.max(dias, 60)),
   ])
 
   const postsComMetricas = (metricas ?? []).map((m: any) => ({
@@ -39,5 +40,6 @@ export async function GET(req: NextRequest) {
     temas: resumoTemas,
     horarios: melhoresHorarios,
     linkedin: linkedinStatus,
+    linkedinAnalytics: linkedinAnalyticsStatus,
   })
 }

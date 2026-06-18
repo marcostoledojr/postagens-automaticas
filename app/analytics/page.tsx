@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   TrendingUp, Heart, MessageCircle, Share2, Eye, Award,
-  Zap, Clock, RefreshCw, Wifi, WifiOff, MousePointer
+  Zap, Clock, RefreshCw, Wifi, WifiOff, MousePointer, Upload
 } from 'lucide-react'
 
 type MetricaPost = {
@@ -44,6 +44,12 @@ type LinkedInStatus = {
   diasRestantes: number | null
 }
 
+type AnalyticsStatus = {
+  conectado: boolean
+  expiraEm: string | null
+  diasRestantes: number | null
+}
+
 export default function AnalyticsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-slate-400">Carregando analytics...</div>}>
@@ -58,6 +64,7 @@ function Analytics() {
   const [resumoTemas, setResumoTemas] = useState<ResumoTema[]>([])
   const [horarios, setHorarios] = useState<HorarioAnalise[]>([])
   const [linkedin, setLinkedin] = useState<LinkedInStatus | null>(null)
+  const [linkedinAnalytics, setLinkedinAnalytics] = useState<AnalyticsStatus | null>(null)
   const [periodo, setPeriodo] = useState('30')
   const [loading, setLoading] = useState(true)
   const [coletando, setColetando] = useState(false)
@@ -66,6 +73,8 @@ function Analytics() {
   const [urlsDigitadas, setUrlsDigitadas] = useState<Record<string, string>>({})
   const [salvandoId, setSalvandoId] = useState<string | null>(null)
   const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function carregar() {
     setLoading(true)
@@ -75,7 +84,37 @@ function Analytics() {
     setResumoTemas(json.temas ?? [])
     setHorarios(json.horarios ?? [])
     setLinkedin(json.linkedin ?? null)
+    setLinkedinAnalytics(json.linkedinAnalytics ?? null)
     setLoading(false)
+  }
+
+  async function importarExcelLinkedIn(file: File) {
+    setImportando(true)
+    setNotificacao(null)
+    try {
+      // Lê o arquivo como ArrayBuffer e envia para o servidor processar
+      const buffer = await file.arrayBuffer()
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+
+      const res = await fetch('/api/metricas/importar-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ arquivo: base64, nome: file.name }),
+      })
+      const json = await res.json()
+
+      if (json.ok) {
+        setNotificacao(`✓ Importado: ${json.impressoes} impressões, ${json.curtidas} curtidas, ${json.compartilhamentos} compartilhamentos`)
+        await carregar()
+      } else {
+        setNotificacao(`⚠ ${json.erro}`)
+      }
+    } catch (err: any) {
+      setNotificacao(`⚠ Erro ao importar: ${err.message}`)
+    } finally {
+      setImportando(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   async function carregarPostsSemId() {
@@ -140,12 +179,16 @@ function Analytics() {
     const conectado = searchParams.get('conectado')
     const erro = searchParams.get('erro')
     if (conectado === '1') setNotificacao('✓ LinkedIn conectado com sucesso! Métricas serão coletadas automaticamente.')
+    if (searchParams.get('analytics_conectado') === '1') setNotificacao('✓ LinkedIn Analytics conectado! Impressões e métricas completas agora disponíveis.')
     if (erro) {
       const msgs: Record<string, string> = {
         oauth_cancelado: 'Conexão cancelada.',
         token_falhou: 'Erro ao obter token do LinkedIn. Tente novamente.',
         credenciais_faltando: 'Credenciais do LinkedIn App não configuradas no Vercel.',
         salvar_token: 'Erro ao salvar token no banco. Tente novamente.',
+        analytics_oauth_cancelado: 'Conexão de analytics cancelada.',
+        analytics_token_falhou: 'Erro ao obter token de analytics. Tente novamente.',
+        analytics_credenciais_faltando: 'LINKEDIN_ANALYTICS_CLIENT_ID/SECRET não configurados no Vercel.',
       }
       setNotificacao(`⚠ ${msgs[erro] ?? 'Erro desconhecido.'}`)
     }
@@ -200,6 +243,20 @@ function Analytics() {
             <option value="30">Últimos 30 dias</option>
             <option value="90">Últimos 90 dias</option>
           </select>
+          <label
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 cursor-pointer transition-colors"
+            title="Importar Excel exportado do LinkedIn (Análise da publicação)"
+          >
+            <Upload size={14} className={importando ? 'animate-pulse' : ''} />
+            {importando ? 'Importando...' : 'Importar Excel'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) importarExcelLinkedIn(f) }}
+            />
+          </label>
           <button
             onClick={coletarAgora}
             disabled={coletando}
@@ -261,6 +318,48 @@ function Analytics() {
           }`}
         >
           {linkedin?.conectado ? 'Reconectar' : 'Conectar LinkedIn'}
+        </a>
+      </div>
+
+      {/* Status LinkedIn Analytics (segundo app — Community Management API) */}
+      <div className={`rounded-xl border p-4 mb-4 flex items-center justify-between ${
+        linkedinAnalytics?.conectado
+          ? 'bg-green-50 border-green-200'
+          : 'bg-amber-50 border-amber-200'
+      }`}>
+        <div className="flex items-center gap-3">
+          {linkedinAnalytics?.conectado ? (
+            <TrendingUp size={18} className="text-green-600" />
+          ) : (
+            <TrendingUp size={18} className="text-amber-500" />
+          )}
+          <div>
+            {linkedinAnalytics?.conectado ? (
+              <>
+                <p className="text-sm font-medium text-green-800">Analytics conectado — impressões ativas</p>
+                <p className="text-xs text-green-600">Token válido por mais {linkedinAnalytics.diasRestantes} dias</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-amber-800">Analytics não conectado — impressões indisponíveis</p>
+                <p className="text-xs text-amber-700">
+                  {process.env.NEXT_PUBLIC_APP_URL
+                    ? 'Aguardando aprovação LinkedIn → conecte após receber o email de aprovação'
+                    : 'Conecte o app de analytics após aprovação da Community Management API pelo LinkedIn'}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        <a
+          href="/api/auth/linkedin-analytics"
+          className={`text-xs font-medium px-4 py-2 rounded-lg transition-colors ${
+            linkedinAnalytics?.conectado
+              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+              : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+          }`}
+        >
+          {linkedinAnalytics?.conectado ? 'Reconectar Analytics' : 'Conectar Analytics'}
         </a>
       </div>
 
