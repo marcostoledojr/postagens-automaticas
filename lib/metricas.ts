@@ -79,129 +79,95 @@ export async function getLinkedInStatus(): Promise<{
 
 // ─── Coleta de métricas de um post ───────────────────────────────────────────
 
-export async function coletarMetricas(postId: string, linkedinPostId: string): Promise<void> {
+// Retorna true se conseguiu salvar algum dado (mesmo zeros), false se pulou/sem token
+export async function coletarMetricas(postId: string, linkedinPostId: string): Promise<boolean> {
   if (!linkedinPostId || linkedinPostId.startsWith('make_')) {
-    console.warn(`[Métricas] Post ${postId} sem LinkedIn ID real — Make.com não retornou URN. Pulando.`)
-    return
+    console.warn(`[Métricas] Post ${postId} sem LinkedIn ID real. Pulando.`)
+    return false
   }
 
   const { token, personUrn } = await getLinkedInConfig()
   if (!token) {
-    console.warn('[Métricas] Token não configurado ou expirado. Conecte em /analytics.')
-    return
+    console.warn('[Métricas] Token não configurado ou expirado.')
+    return false
   }
   if (!personUrn) {
-    console.warn('[Métricas] LinkedIn person URN não encontrado. Reconecte em /analytics.')
-    return
+    console.warn('[Métricas] LinkedIn person URN não encontrado.')
+    return false
   }
 
-  try {
-    // memberShareStatistics: endpoint oficial para métricas de posts de perfil pessoal
-    // Retorna: impressões, cliques, curtidas, comentários, compartilhamentos, taxa de engajamento
-    const encoded = encodeURIComponent(linkedinPostId)
-    const personEncoded = encodeURIComponent(personUrn)
+  const supabase = createClient()
+  const encoded = encodeURIComponent(linkedinPostId)
+  const personEncoded = encodeURIComponent(personUrn)
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${token}`,
+    'X-Restli-Protocol-Version': '2.0.0',
+    'LinkedIn-Version': '202401',
+  }
 
+  let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0, taxaEngajamento = 0
+
+  try {
+    // Tentativa 1: memberShareStatistics (precisa de r_member_social — pode retornar 403)
     const res = await fetch(
       `https://api.linkedin.com/v2/memberShareStatistics?q=actor&actor=${personEncoded}&shares[0]=${encoded}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Restli-Protocol-Version': '2.0.0',
-          'LinkedIn-Version': '202401',
-        },
-      }
+      { headers }
     )
 
-    if (!res.ok) {
-      console.warn(`[Métricas] memberShareStatistics retornou ${res.status} para post ${postId}`)
-      // Fallback: tenta socialActions para curtidas e comentários
-      await coletarViaFallback(postId, linkedinPostId, token)
-      return
+    if (res.ok) {
+      const data = await res.json()
+      const stats = data.elements?.[0]?.totalShareStatistics ?? {}
+      impressoes        = stats.impressionCount ?? 0
+      curtidas          = stats.likeCount ?? 0
+      comentarios       = stats.commentCount ?? 0
+      compartilhamentos = stats.shareCount ?? 0
+      cliques           = stats.clickCount ?? 0
+      taxaEngajamento   = stats.engagement ?? 0
+      console.log(`[Métricas] memberShareStatistics OK para ${postId}`)
+    } else {
+      console.warn(`[Métricas] memberShareStatistics ${res.status} — tentando socialActions`)
+
+      // Tentativa 2: socialActions (curtidas + comentários, funciona com w_member_social)
+      const res2 = await fetch(`https://api.linkedin.com/v2/socialActions/${encoded}`, { headers })
+      if (res2.ok) {
+        const data2 = await res2.json()
+        curtidas    = data2.likesSummary?.totalLikes ?? 0
+        comentarios = data2.commentsSummary?.totalFirstLevelComments ?? 0
+        console.log(`[Métricas] socialActions OK para ${postId}: ${curtidas} curtidas, ${comentarios} comentários`)
+      } else {
+        console.warn(`[Métricas] socialActions ${res2.status} — salvando registro com zeros (será atualizado)`)
+      }
     }
-
-    const data = await res.json()
-    const stats = data.elements?.[0]?.totalShareStatistics ?? {}
-
-    const impressoes      = stats.impressionCount ?? 0
-    const curtidas        = stats.likeCount ?? 0
-    const comentarios     = stats.commentCount ?? 0
-    const compartilhamentos = stats.shareCount ?? 0
-    const cliques         = stats.clickCount ?? 0
-    // Taxa de engajamento nativa do LinkedIn (0–1), já calculada pelo LinkedIn
-    const taxaEngajamento = stats.engagement ?? 0
-
-    // Score interno: pesos refletem o valor de cada ação
-    // Fórmula: engajamento × 100 (se disponível) ou score bruto
-    const score = taxaEngajamento > 0
-      ? parseFloat((taxaEngajamento * 100).toFixed(4))
-      : impressoes > 0
-        ? parseFloat(((curtidas * 1 + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
-        : curtidas + comentarios * 3 + compartilhamentos * 5
-
-    const supabase = createClient()
-    await supabase.from('metricas').upsert(
-      {
-        post_id: postId,
-        impressoes,
-        curtidas,
-        comentarios,
-        compartilhamentos,
-        cliques,
-        score_engajamento: score,
-        coletado_em: new Date().toISOString(),
-      },
-      { onConflict: 'post_id' }
-    )
-
-    console.log(
-      `[Métricas] Post ${postId}: ${impressoes} impressões, ${curtidas} curtidas, ` +
-      `${comentarios} comentários → score ${score.toFixed(2)}`
-    )
   } catch (err) {
-    console.error(`[Métricas] Erro ao coletar métricas do post ${postId}:`, err)
+    console.error(`[Métricas] Erro na coleta do post ${postId}:`, err)
   }
+
+  // Sempre salva o registro — mesmo com zeros, marca que o post está monitorado
+  // Próximas coletas automáticas vão atualizar os valores
+  const score = taxaEngajamento > 0
+    ? parseFloat((taxaEngajamento * 100).toFixed(4))
+    : impressoes > 0
+      ? parseFloat(((curtidas + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
+      : curtidas + comentarios * 3 + compartilhamentos * 5
+
+  await supabase.from('metricas').upsert(
+    {
+      post_id: postId,
+      impressoes,
+      curtidas,
+      comentarios,
+      compartilhamentos,
+      cliques,
+      score_engajamento: score,
+      coletado_em: new Date().toISOString(),
+    },
+    { onConflict: 'post_id' }
+  )
+
+  console.log(`[Métricas] Salvo post ${postId}: ${impressoes} impressões, ${curtidas} curtidas → score ${score}`)
+  return true
 }
 
-/** Fallback quando memberShareStatistics falha: coleta só curtidas e comentários */
-async function coletarViaFallback(postId: string, linkedinPostId: string, token: string): Promise<void> {
-  try {
-    const encoded = encodeURIComponent(linkedinPostId)
-    const res = await fetch(
-      `https://api.linkedin.com/v2/socialActions/${encoded}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Restli-Protocol-Version': '2.0.0',
-          'LinkedIn-Version': '202401',
-        },
-      }
-    )
-    if (!res.ok) return
-    const data = await res.json()
-
-    const curtidas    = data.likesSummary?.totalLikes ?? 0
-    const comentarios = data.commentsSummary?.totalFirstLevelComments ?? 0
-    const score       = curtidas + comentarios * 3
-
-    const supabase = createClient()
-    await supabase.from('metricas').upsert(
-      {
-        post_id: postId,
-        impressoes: 0,
-        curtidas,
-        comentarios,
-        compartilhamentos: 0,
-        cliques: 0,
-        score_engajamento: score,
-        coletado_em: new Date().toISOString(),
-      },
-      { onConflict: 'post_id' }
-    )
-    console.log(`[Métricas Fallback] Post ${postId}: ${curtidas} curtidas, ${comentarios} comentários`)
-  } catch (err) {
-    console.error(`[Métricas Fallback] Erro post ${postId}:`, err)
-  }
-}
 
 // ─── Coleta inteligente com janela de 30 dias ─────────────────────────────────
 
@@ -261,15 +227,13 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
     }
 
     try {
-      // Posts com ID fake (make_) são pulados dentro de coletarMetricas — não conta como coletado
-      if (!post.linkedin_post_id || post.linkedin_post_id.startsWith('make_')) {
+      const salvou = await coletarMetricas(post.id, post.linkedin_post_id)
+      if (salvou) {
+        coletados++
+        await new Promise(r => setTimeout(r, 500)) // pausa entre chamadas
+      } else {
         pulados++
-        continue
       }
-      await coletarMetricas(post.id, post.linkedin_post_id)
-      coletados++
-      // Pausa entre chamadas para não sobrecarregar a API
-      await new Promise(r => setTimeout(r, 500))
     } catch (err) {
       console.error(`[Métricas] Erro post ${post.id}:`, err)
       pulados++

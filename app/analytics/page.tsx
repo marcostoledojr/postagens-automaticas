@@ -230,8 +230,8 @@ function Analytics() {
         </a>
       </div>
 
-      {/* Banner instrução Make.com — aparece enquanto não há dados reais */}
-      {linkedin?.conectado && metricas.length === 0 && (
+      {/* Banner instrução Make.com — aparece apenas se LinkedIn conectado e ainda sem nenhuma coleta */}
+      {linkedin?.conectado && metricas.length === 0 && resumoTemas.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
           <p className="text-sm font-semibold text-amber-900 mb-2">📋 Configure o Make.com para enviar o ID real do LinkedIn</p>
           <p className="text-sm text-amber-800 mb-3">
