@@ -94,7 +94,7 @@ function Analytics() {
     try {
       // Lê o arquivo como ArrayBuffer e envia para o servidor processar
       const buffer = await file.arrayBuffer()
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+      const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))))
 
       const res = await fetch('/api/metricas/importar-excel', {
         method: 'POST',
