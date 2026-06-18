@@ -177,32 +177,4 @@ async function publicarPostsAgendados() {
   return { publicados, erros }
 }
 
-async function coletarMetricasRecentes() {
-  const supabase = createClient()
-
-  // Posts publicados nas últimas 72h que ainda não têm métricas do dia
-  const limite = new Date(Date.now() - 72 * 60 * 60 * 1000)
-
-  const { data: posts } = await supabase
-    .from('posts')
-    .select('id, linkedin_post_id')
-    .eq('status', 'publicado')
-    .gte('publicado_em', limite.toISOString())
-    .not('linkedin_post_id', 'is', null)
-
-  if (!posts || posts.length === 0) {
-    return { mensagem: 'Nenhum post recente para coletar métricas', coletados: 0 }
-  }
-
-  let coletados = 0
-  for (const post of posts) {
-    try {
-      await coletarMetricas(post.id, post.linkedin_post_id)
-      coletados++
-    } catch (err) {
-      console.error(`Erro ao coletar métricas do post ${post.id}:`, err)
-    }
-  }
-
-  return { coletados }
-}
+// coletarMetricasRecentes: importada de @/lib/metricas
