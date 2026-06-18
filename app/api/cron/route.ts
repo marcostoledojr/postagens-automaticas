@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { gerarPostsParaAmanha, gerarResumoSemanal } from '@/lib/motor-geracao'
 import { publicarPostLinkedIn } from '@/lib/linkedin'
-import { coletarMetricas } from '@/lib/metricas'
+import { coletarMetricasRecentes } from '@/lib/metricas'
 import { enviarAlertaErro } from '@/lib/email'
 
 export async function GET(req: NextRequest) {
@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Coleta métricas junto com a geração (uma vez por dia)
+    // Schedule inteligente: diário nos primeiros 7 dias, semanal até 30 dias
     console.log('[CRON] Coletando métricas de engajamento...')
     try {
       const metricas = await coletarMetricasRecentes()

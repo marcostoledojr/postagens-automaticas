@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { buscarResumoTemas } from '@/lib/metricas'
+import { buscarResumoTemas, getLinkedInStatus, analisarMelhoresHorarios } from '@/lib/metricas'
 
 export async function GET(req: NextRequest) {
   const supabase = createClient()
@@ -8,29 +8,36 @@ export async function GET(req: NextRequest) {
   const dias = Number(searchParams.get('dias') ?? '30')
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: metricas }, resumoTemas] = await Promise.all([
+  const [{ data: metricas }, resumoTemas, linkedinStatus, melhoresHorarios] = await Promise.all([
     supabase
       .from('metricas')
-      .select('*, posts(texto, tema_nome, publicado_em)')
+      .select('*, posts(texto, tema_nome, publicado_em, horario_publicacao)')
       .gte('coletado_em', desde)
       .order('score_engajamento', { ascending: false })
       .limit(50),
     buscarResumoTemas(dias),
+    getLinkedInStatus(),
+    analisarMelhoresHorarios(Math.max(dias, 60)), // sempre 60 dias mínimo para análise de horário
   ])
 
-  // Achata os dados para a UI
   const postsComMetricas = (metricas ?? []).map((m: any) => ({
     post_id: m.post_id,
     texto: m.posts?.texto ?? '',
     tema_nome: m.posts?.tema_nome ?? '',
     publicado_em: m.posts?.publicado_em ?? '',
+    horario: m.posts?.horario_publicacao ?? '',
     impressoes: m.impressoes,
     curtidas: m.curtidas,
     comentarios: m.comentarios,
     compartilhamentos: m.compartilhamentos,
-    cliques: m.cliques,
+    cliques: m.cliques ?? 0,
     score_engajamento: m.score_engajamento,
   }))
 
-  return NextResponse.json({ posts: postsComMetricas, temas: resumoTemas })
+  return NextResponse.json({
+    posts: postsComMetricas,
+    temas: resumoTemas,
+    horarios: melhoresHorarios,
+    linkedin: linkedinStatus,
+  })
 }
