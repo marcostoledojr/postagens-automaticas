@@ -60,6 +60,7 @@ function Analytics() {
   const [linkedin, setLinkedin] = useState<LinkedInStatus | null>(null)
   const [periodo, setPeriodo] = useState('30')
   const [loading, setLoading] = useState(true)
+  const [coletando, setColetando] = useState(false)
   const [notificacao, setNotificacao] = useState<string | null>(null)
 
   async function carregar() {
@@ -71,6 +72,30 @@ function Analytics() {
     setHorarios(json.horarios ?? [])
     setLinkedin(json.linkedin ?? null)
     setLoading(false)
+  }
+
+  async function coletarAgora() {
+    setColetando(true)
+    setNotificacao(null)
+    try {
+      const res = await fetch('/api/metricas/coletar', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setNotificacao(`⚠ Erro na coleta: ${json.erro ?? 'Tente novamente.'}`)
+      } else {
+        const { reparo, coleta } = json
+        const msgs = []
+        if (reparo.reparados > 0) msgs.push(`${reparo.reparados} ID(s) de post recuperado(s)`)
+        if (coleta.coletados > 0) msgs.push(`${coleta.coletados} post(s) com métricas atualizadas`)
+        if (msgs.length === 0) msgs.push('Nenhuma métrica nova (posts ainda sem LinkedIn ID real)')
+        setNotificacao(`✓ ${msgs.join(' · ')}`)
+        await carregar()
+      }
+    } catch (err: any) {
+      setNotificacao(`⚠ Erro: ${err.message}`)
+    } finally {
+      setColetando(false)
+    }
   }
 
   useEffect(() => { carregar() }, [periodo])
@@ -140,9 +165,18 @@ function Analytics() {
             <option value="90">Últimos 90 dias</option>
           </select>
           <button
+            onClick={coletarAgora}
+            disabled={coletando}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            title="Buscar métricas do LinkedIn agora"
+          >
+            <RefreshCw size={14} className={coletando ? 'animate-spin' : ''} />
+            {coletando ? 'Coletando...' : 'Coletar Agora'}
+          </button>
+          <button
             onClick={carregar}
             className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-            title="Atualizar"
+            title="Atualizar dados"
           >
             <RefreshCw size={16} className="text-slate-500" />
           </button>

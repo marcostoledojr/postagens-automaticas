@@ -307,6 +307,105 @@ export async function analisarMelhoresHorarios(dias: number = 60) {
     .sort((a, b) => b.score_medio - a.score_medio)
 }
 
+// ─── Recuperação de IDs reais (posts publicados via Make.com com ID fake) ────
+
+/**
+ * Consulta o LinkedIn para descobrir os IDs reais dos posts que têm linkedin_post_id
+ * começando com "make_" (gerado como fallback quando Make.com não retornou o URN real).
+ * Faz match por data de publicação (margem de 4h) e atualiza o banco.
+ */
+export async function repararIdsMake(): Promise<{ reparados: number; naoEncontrados: number; apiStatus: string }> {
+  const { token, personUrn } = await getLinkedInConfig()
+  if (!token || !personUrn) {
+    return { reparados: 0, naoEncontrados: 0, apiStatus: 'token_ausente' }
+  }
+
+  const supabase = createClient()
+
+  // Posts com IDs falsos publicados nos últimos 90 dias
+  const limite90dias = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: postsParaReparar } = await supabase
+    .from('posts')
+    .select('id, publicado_em, texto')
+    .eq('status', 'publicado')
+    .like('linkedin_post_id', 'make_%')
+    .not('publicado_em', 'is', null)
+    .gte('publicado_em', limite90dias)
+
+  if (!postsParaReparar || postsParaReparar.length === 0) {
+    return { reparados: 0, naoEncontrados: 0, apiStatus: 'sem_posts_make' }
+  }
+
+  console.log(`[Reparo IDs] ${postsParaReparar.length} posts com ID fake encontrados`)
+
+  const personEncoded = encodeURIComponent(personUrn)
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${token}`,
+    'X-Restli-Protocol-Version': '2.0.0',
+    'LinkedIn-Version': '202401',
+  }
+
+  let linkedinPosts: any[] = []
+  let apiStatus = 'falhou'
+
+  // Tentativa 1: ugcPosts (formato moderno — posts com texto longo e imagens)
+  const ugcRes = await fetch(
+    `https://api.linkedin.com/v2/ugcPosts?q=authors&authors[0]=${personEncoded}&count=100`,
+    { headers }
+  )
+  if (ugcRes.ok) {
+    const ugcData = await ugcRes.json()
+    linkedinPosts = ugcData.elements ?? []
+    apiStatus = `ugcPosts_ok_${linkedinPosts.length}`
+    console.log(`[Reparo IDs] ugcPosts: ${linkedinPosts.length} posts`)
+  } else {
+    console.warn(`[Reparo IDs] ugcPosts retornou ${ugcRes.status}`)
+    // Tentativa 2: shares (formato legado)
+    const sharesRes = await fetch(
+      `https://api.linkedin.com/v2/shares?q=owners&owners=${personEncoded}&count=100`,
+      { headers }
+    )
+    if (sharesRes.ok) {
+      const sharesData = await sharesRes.json()
+      linkedinPosts = sharesData.elements ?? []
+      apiStatus = `shares_ok_${linkedinPosts.length}`
+      console.log(`[Reparo IDs] shares: ${linkedinPosts.length} posts`)
+    } else {
+      apiStatus = `ambos_falharam_ugc${ugcRes.status}_shares${sharesRes.status}`
+    }
+  }
+
+  if (linkedinPosts.length === 0) {
+    return { reparados: 0, naoEncontrados: postsParaReparar.length, apiStatus }
+  }
+
+  let reparados = 0
+
+  for (const post of postsParaReparar) {
+    const publicadoEm = new Date(post.publicado_em).getTime()
+
+    // Match por proximidade de data (margem de 4h — cron tem janela flexível)
+    const match = linkedinPosts.find((lp: any) => {
+      const lpTime = lp.created?.time ?? lp.firstPublishedAt
+      if (!lpTime) return false
+      return Math.abs(publicadoEm - lpTime) < 4 * 60 * 60 * 1000
+    })
+
+    if (match) {
+      const realId = match.id ?? match.activity
+      if (realId) {
+        await supabase.from('posts').update({ linkedin_post_id: realId }).eq('id', post.id)
+        console.log(`[Reparo IDs] Post ${post.id} → ${realId}`)
+        reparados++
+      }
+    }
+  }
+
+  const naoEncontrados = postsParaReparar.length - reparados
+  console.log(`[Reparo IDs] Resultado: ${reparados} reparados, ${naoEncontrados} não encontrados`)
+  return { reparados, naoEncontrados, apiStatus }
+}
+
 // ─── Resumo por tema ──────────────────────────────────────────────────────────
 
 export async function buscarResumoTemas(dias: number = 30) {
