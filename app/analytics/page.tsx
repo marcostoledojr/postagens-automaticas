@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   TrendingUp, Heart, MessageCircle, Share2, Eye, Award,
@@ -44,7 +44,15 @@ type LinkedInStatus = {
   diasRestantes: number | null
 }
 
-export default function Analytics() {
+export default function AnalyticsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-slate-400">Carregando analytics...</div>}>
+      <Analytics />
+    </Suspense>
+  )
+}
+
+function Analytics() {
   const searchParams = useSearchParams()
   const [metricas, setMetricas] = useState<MetricaPost[]>([])
   const [resumoTemas, setResumoTemas] = useState<ResumoTema[]>([])
