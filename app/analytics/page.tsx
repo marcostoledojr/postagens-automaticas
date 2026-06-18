@@ -62,6 +62,10 @@ function Analytics() {
   const [loading, setLoading] = useState(true)
   const [coletando, setColetando] = useState(false)
   const [notificacao, setNotificacao] = useState<string | null>(null)
+  const [postsSemId, setPostsSemId] = useState<{id:string;texto:string;tema_nome:string;publicado_em:string}[]>([])
+  const [urlsDigitadas, setUrlsDigitadas] = useState<Record<string, string>>({})
+  const [salvandoId, setSalvandoId] = useState<string | null>(null)
+  const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false)
 
   async function carregar() {
     setLoading(true)
@@ -72,6 +76,36 @@ function Analytics() {
     setHorarios(json.horarios ?? [])
     setLinkedin(json.linkedin ?? null)
     setLoading(false)
+  }
+
+  async function carregarPostsSemId() {
+    const res = await fetch('/api/posts/sem-linkedin-id')
+    const data = await res.json()
+    setPostsSemId(data)
+    setMostrarRecuperacao(true)
+  }
+
+  async function salvarUrlLinkedIn(postId: string) {
+    const url = urlsDigitadas[postId]
+    if (!url) return
+    setSalvandoId(postId)
+    try {
+      const res = await fetch('/api/posts/atualizar-linkedin-id', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId, linkedinUrl: url }),
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setPostsSemId(prev => prev.filter(p => p.id !== postId))
+        setUrlsDigitadas(prev => { const n = {...prev}; delete n[postId]; return n })
+        setNotificacao(`✓ ID salvo: ${json.urn} — clique em Coletar Agora para buscar as métricas`)
+      } else {
+        setNotificacao(`⚠ ${json.erro}`)
+      }
+    } finally {
+      setSalvandoId(null)
+    }
   }
 
   async function coletarAgora() {
@@ -445,6 +479,73 @@ function Analytics() {
               ))
           )}
         </div>
+      </div>
+
+      {/* Recuperação de posts anteriores */}
+      <div className="bg-white rounded-xl border border-slate-200 mb-6">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-slate-800">Recuperar Métricas de Posts Anteriores</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Posts publicados antes da configuração do Make.com. Cole a URL do LinkedIn de cada um.
+            </p>
+          </div>
+          <button
+            onClick={mostrarRecuperacao ? () => setMostrarRecuperacao(false) : carregarPostsSemId}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            {mostrarRecuperacao ? 'Fechar' : 'Ver posts sem ID'}
+          </button>
+        </div>
+
+        {mostrarRecuperacao && (
+          <div className="divide-y divide-slate-100">
+            {postsSemId.length === 0 ? (
+              <div className="px-6 py-6 text-center text-slate-400 text-sm">
+                Todos os posts já têm ID real do LinkedIn.
+              </div>
+            ) : (
+              <>
+                <div className="px-6 py-3 bg-blue-50 text-xs text-blue-700">
+                  <strong>Como encontrar a URL:</strong> Vá ao seu perfil no LinkedIn → clique nos 3 pontinhos do post → "Copiar link do post" → cole abaixo.
+                </div>
+                {postsSemId.map(post => (
+                  <div key={post.id} className="px-6 py-4">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-400 mb-0.5">
+                          {post.tema_nome} · {new Date(post.publicado_em).toLocaleDateString('pt-BR')}
+                        </p>
+                        <p className="text-sm text-slate-700 truncate">{post.texto.slice(0, 90)}...</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 w-96">
+                        <input
+                          type="text"
+                          placeholder="Cole a URL do post do LinkedIn..."
+                          value={urlsDigitadas[post.id] ?? ''}
+                          onChange={e => setUrlsDigitadas(prev => ({...prev, [post.id]: e.target.value}))}
+                          className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        />
+                        <button
+                          onClick={() => salvarUrlLinkedIn(post.id)}
+                          disabled={!urlsDigitadas[post.id] || salvandoId === post.id}
+                          className="px-3 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {salvandoId === post.id ? '...' : 'Salvar'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {postsSemId.length > 0 && (
+                  <div className="px-6 py-3 bg-slate-50 text-xs text-slate-500 text-center">
+                    Após salvar os IDs, clique em <strong>Coletar Agora</strong> para buscar as métricas de todos.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Loop de aprendizado */}

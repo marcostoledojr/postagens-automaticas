@@ -150,19 +150,30 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
       ? parseFloat(((curtidas + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
       : curtidas + comentarios * 3 + compartilhamentos * 5
 
-  await supabase.from('metricas').upsert(
-    {
-      post_id: postId,
-      impressoes,
-      curtidas,
-      comentarios,
-      compartilhamentos,
-      cliques,
-      score_engajamento: score,
-      coletado_em: new Date().toISOString(),
-    },
-    { onConflict: 'post_id' }
-  )
+  const payload = {
+    impressoes,
+    curtidas,
+    comentarios,
+    compartilhamentos,
+    cliques,
+    score_engajamento: score,
+    coletado_em: new Date().toISOString(),
+  }
+
+  // Verifica se já existe linha para este post (evita depender de UNIQUE constraint)
+  const { data: existente } = await supabase
+    .from('metricas')
+    .select('id')
+    .eq('post_id', postId)
+    .maybeSingle()
+
+  if (existente) {
+    const { error } = await supabase.from('metricas').update(payload).eq('post_id', postId)
+    if (error) console.error(`[Métricas] Erro ao atualizar post ${postId}:`, error.message)
+  } else {
+    const { error } = await supabase.from('metricas').insert({ post_id: postId, ...payload })
+    if (error) console.error(`[Métricas] Erro ao inserir post ${postId}:`, error.message)
+  }
 
   console.log(`[Métricas] Salvo post ${postId}: ${impressoes} impressões, ${curtidas} curtidas → score ${score}`)
   return true
