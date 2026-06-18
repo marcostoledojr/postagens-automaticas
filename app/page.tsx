@@ -16,7 +16,7 @@ async function getDashboardData() {
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'pendente'),
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'publicado')
       .gte('publicado_em', inicioSemana.toISOString()),
-    supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'aprovado'),
+    supabase.from('posts').select('id', { count: 'exact' }).in('status', ['aprovado', 'agendado']),
     supabase.from('posts')
       .select('id, texto, tema_nome, status, data_agendada, publicado_em, imagem_url')
       .in('status', ['publicado', 'aprovado', 'agendado'])
