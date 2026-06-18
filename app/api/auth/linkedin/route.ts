@@ -21,11 +21,11 @@ export async function GET(req: NextRequest) {
 
   const redirectUri = `${appUrl}/api/auth/linkedin/callback`
 
-  // Escopos necessários:
-  // openid + profile + email → autenticação básica
-  // w_member_social → publicar posts (já em uso via Make.com)
-  // r_member_social → ler curtidas e comentários dos posts
-  const scope = 'openid profile email w_member_social r_member_social'
+  // Escopos disponíveis para apps LinkedIn padrão:
+  // openid + profile + email → autenticação e person URN (via /v2/userinfo)
+  // w_member_social → publicar posts e ler estatísticas dos próprios posts
+  // Nota: r_member_social exige LinkedIn Marketing Partner Program (não disponível)
+  const scope = 'openid profile email w_member_social'
 
   const url = new URL('https://www.linkedin.com/oauth/v2/authorization')
   url.searchParams.set('response_type', 'code')
