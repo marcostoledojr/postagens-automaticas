@@ -12,11 +12,12 @@ async function getDashboardData() {
   const inicioSemana = new Date(hoje)
   inicioSemana.setDate(hoje.getDate() - hoje.getDay())
 
-  const [pendentes, publicados, agendados, ultimosPublicados] = await Promise.all([
+  const [pendentes, publicados, aprovados, agendadosQ, ultimosPublicados] = await Promise.all([
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'pendente'),
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'publicado')
       .gte('publicado_em', inicioSemana.toISOString()),
-    supabase.from('posts').select('id', { count: 'exact' }).in('status', ['aprovado', 'agendado']),
+    supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'aprovado'),
+    supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'agendado'),
     supabase.from('posts')
       .select('id, texto, tema_nome, status, data_agendada, publicado_em, imagem_url')
       .in('status', ['publicado', 'aprovado', 'agendado'])
@@ -27,7 +28,7 @@ async function getDashboardData() {
   return {
     pendentes: pendentes.count ?? 0,
     publicadosSemana: publicados.count ?? 0,
-    agendados: agendados.count ?? 0,
+    agendados: (aprovados.count ?? 0) + (agendadosQ.count ?? 0),
     ultimosPublicados: ultimosPublicados.data ?? [],
   }
 }
