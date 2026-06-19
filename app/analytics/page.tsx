@@ -68,6 +68,7 @@ function Analytics() {
   const [periodo, setPeriodo] = useState('30')
   const [loading, setLoading] = useState(true)
   const [coletando, setColetando] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [notificacao, setNotificacao] = useState<string | null>(null)
   const [postsSemId, setPostsSemId] = useState<{id:string;texto:string;tema_nome:string;publicado_em:string}[]>([])
   const [urlsDigitadas, setUrlsDigitadas] = useState<Record<string, string>>({})
@@ -267,11 +268,12 @@ function Analytics() {
             {coletando ? 'Coletando...' : 'Coletar Agora'}
           </button>
           <button
-            onClick={carregar}
-            className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            onClick={async () => { setRefreshing(true); await carregar(); setRefreshing(false) }}
+            disabled={refreshing}
+            className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             title="Atualizar dados"
           >
-            <RefreshCw size={16} className="text-slate-500" />
+            <RefreshCw size={16} className={`text-slate-500 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

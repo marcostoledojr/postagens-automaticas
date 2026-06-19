@@ -30,8 +30,6 @@ export default function Calendario() {
   const [mesAtual, setMesAtual] = useState(new Date())
   const [posts, setPosts] = useState<Post[]>([])
   const [diaSelecionado, setDiaSelecionado] = useState<Date | null>(null)
-  const [gerandoAntecipado, setGerandoAntecipado] = useState(false)
-  const [diasAntecipados, setDiasAntecipados] = useState(10)
 
   async function carregar(mes: Date) {
     const inicio = startOfMonth(mes).toISOString()
@@ -55,51 +53,13 @@ export default function Calendario() {
 
   const postsDiaSelecionado = diaSelecionado ? postsPorDia(diaSelecionado) : []
 
-  async function gerarAntecipado() {
-    setGerandoAntecipado(true)
-    await fetch('/api/gerar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dias: diasAntecipados }),
-    })
-    await carregar(mesAtual)
-    setGerandoAntecipado(false)
-    alert(`Posts para os próximos ${diasAntecipados} dias enviados para a fila de aprovação!`)
-  }
-
   const inicioOffset = getDay(startOfMonth(mesAtual)) // 0=Dom
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Calendário</h1>
-          <p className="text-slate-500 mt-1">Visualize e gerencie os posts agendados.</p>
-        </div>
-
-        {/* Geração antecipada (para férias) */}
-        <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3">
-          <div>
-            <p className="text-xs font-medium text-slate-600">Gerar posts antecipados</p>
-            <p className="text-xs text-slate-400">Para viagens ou ausências</p>
-          </div>
-          <select
-            value={diasAntecipados}
-            onChange={e => setDiasAntecipados(Number(e.target.value))}
-            className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-          >
-            {[5,7,10,14,20,30].map(d => (
-              <option key={d} value={d}>{d} dias</option>
-            ))}
-          </select>
-          <button
-            onClick={gerarAntecipado}
-            disabled={gerandoAntecipado}
-            className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {gerandoAntecipado ? 'Gerando...' : 'Gerar'}
-          </button>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">Calendário</h1>
+        <p className="text-slate-500 mt-1">Visualize e gerencie os posts agendados.</p>
       </div>
 
       <div className="flex gap-6">

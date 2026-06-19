@@ -8,14 +8,10 @@ export const dynamic = 'force-dynamic'
 
 async function getDashboardData() {
   const supabase = createClient()
-  const hoje = new Date()
-  const inicioSemana = new Date(hoje)
-  inicioSemana.setDate(hoje.getDate() - hoje.getDay())
 
   const [pendentes, publicados, aprovados, agendadosQ, ultimosPublicados] = await Promise.all([
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'pendente'),
-    supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'publicado')
-      .gte('publicado_em', inicioSemana.toISOString()),
+    supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'publicado'),
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'aprovado'),
     supabase.from('posts').select('id', { count: 'exact' }).eq('status', 'agendado'),
     supabase.from('posts')
@@ -27,7 +23,7 @@ async function getDashboardData() {
 
   return {
     pendentes: pendentes.count ?? 0,
-    publicadosSemana: publicados.count ?? 0,
+    totalPublicados: publicados.count ?? 0,
     agendados: (aprovados.count ?? 0) + (agendadosQ.count ?? 0),
     ultimosPublicados: ultimosPublicados.data ?? [],
   }
@@ -57,8 +53,8 @@ export default async function Dashboard() {
       acao: null,
     },
     {
-      label: 'Publicados esta semana',
-      value: data.publicadosSemana,
+      label: 'Total Publicados',
+      value: data.totalPublicados,
       icon: CheckCircle,
       color: 'text-green-500',
       bg: 'bg-green-50',
