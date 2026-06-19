@@ -61,6 +61,40 @@ NEVER: vague "a person at a computer" without specifying WHAT IS ON SCREEN; full
 OUTPUT: Only the English prompt. Lead with the scene. 75-100 words. Nothing else.`
 
 
+/**
+ * Retorna instrução visual específica para cada tema, usada pelo diretor de arte Claude.
+ * Permite diversidade visual real entre os temas — evita que tudo vire "corporativo genérico".
+ */
+function getVisualGuidance(tema: string, tipo: 'comercial' | 'autoridade'): string {
+  const t = tema.toLowerCase()
+
+  if (t.includes('gestão') || t.includes('liderança'))
+    return 'EDITORIAL-WARM: amber and golden tones, candid leadership moments, whiteboard coaching, team dynamics, people in focused conversation — NOT posed corporate stock photos'
+
+  if (t.includes('reforma') || t.includes('tributár'))
+    return 'DOCUMENTARY-URGENT: tax documents and regulation binders on desks, fiscal calendars with circled deadlines, accountants working with Brazilian fiscal paperwork (NF-e, SPED, DAS) — informative and urgent atmosphere'
+
+  if (t.includes('mercado financeiro') || t.includes('mercado fin') || t.includes('investimento'))
+    return 'PREMIUM-FINTECH: financial documents and printed reports, professional reviewing portfolios, economic data on screens — premium calm atmosphere, NOT crypto charts or stock ticker animations'
+
+  if (t.includes('livros') || t.includes('insights'))
+    return 'EDITORIAL-BOOKISH: open books with handwritten annotations or highlighted passages, professional reading in calm environments, notebook with insights beside a book — warm inviting bookshelf atmosphere'
+
+  if (t.includes('tecnologia') || t.includes('lançamento'))
+    return 'TECH-NEWSROOM: actual hardware products (laptops, phones, chips), software interfaces on screen, innovation labs, product launch context — dynamic and current, NOT abstract tech metaphors'
+
+  if (t.includes('saúde') || t.includes('saude'))
+    return 'ENERGETIC-WELLNESS: people in motion at office or outdoor corporate settings, natural light, healthy workplace scenes, someone stretching or taking a walking meeting — vibrant energy and human warmth'
+
+  if (t.includes('inteligência artificial') || t.includes('inteligencia artificial'))
+    return 'FUTURISTIC-PROFESSIONAL: human hands using AI interfaces as everyday tools, split-screen showing AI output vs human analysis, professional at laptop with AI assistant responding — AI as practical daily tool, NOT sci-fi robot imagery'
+
+  // Defaults
+  if (tipo === 'autoridade')
+    return 'AUTORIDADE (reflexão, carreira, liderança — ambiente claro, minimalista)'
+  return 'COMERCIAL (produto, solução, ERP — ambiente adequado ao mood do texto)'
+}
+
 async function gerarPromptViaClaude(
   tema: string,
   textoPost: string,
@@ -70,11 +104,9 @@ async function gerarPromptViaClaude(
   if (!anthropicKey) return null
 
   try {
-    const tipoDesc = tipo === 'autoridade'
-      ? 'AUTORIDADE (reflexão, carreira, liderança — ambiente claro, minimalista)'
-      : 'COMERCIAL (produto, solução, ERP — ambiente adequado ao mood do texto)'
+    const tipoDesc = getVisualGuidance(tema, tipo)
 
-    const userMsg = `LINKEDIN POST:\n"""\n${textoPost.slice(0, 1500)}\n"""\n\nTOPIC: ${tema}\nPOST TYPE: ${tipoDesc}`
+    const userMsg = `LINKEDIN POST:\n"""\n${textoPost.slice(0, 1500)}\n"""\n\nTOPIC: ${tema}\nVISUAL STYLE: ${tipoDesc}`
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -285,6 +317,32 @@ function construirPromptFallback(
   tipo: 'comercial' | 'autoridade'
 ): string {
   const t = (textoPost + ' ' + tema).toLowerCase()
+
+  // ── Novos temas — fallbacks específicos ─────────────────────────────────────
+
+  if (/gestão|liderança|time de alta|cultura organizacional|feedback|coaching/.test(t)) {
+    return `A manager standing at a whiteboard actively explaining a hand-drawn organizational diagram to three seated colleagues around a conference table, one colleague taking notes on an open notebook, direct coaching engagement visible through posture and eye contact, a neon green (#30F282) circled item on the whiteboard drawing attention to a key decision point. Solid wall background — no glass walls, no reflections. Documentary corporate photography, 35mm lens, warm natural window light from the left, leadership in an active teaching moment.`
+  }
+
+  if (/reforma tributária|tributár|ibs|cbs|imposto|sistema tributário/.test(t)) {
+    return `Close-up of a financial manager's hands sorting through printed Brazilian tax regulation documents — NF-e invoices, IBS reform binders, DAS receipts stacked on a desk, a regulatory calendar pinned to the wall with a circled deadline date, one document catching neon green (#30F282) desk lamp highlight. Solid dark background behind the desk. Documentary urgency photography, 50mm lens f/2.8, warm focused lighting, the physical reality of Brazilian tax compliance preparation.`
+  }
+
+  if (/mercado financeiro|investimento|renda fixa|bolsa|juros|câmbio|patrimônio/.test(t)) {
+    return `A financial professional's hands opening a printed portfolio report on a clean conference table, columns of returns data visible but not readable as specific advice, a premium pen resting beside a highlighted line, a laptop screen showing a calm market summary dashboard in the background, neon green (#30F282) accent line marking a key figure on the printed report. Documentary premium photography, 50mm lens, soft directional office light from the left, professional wealth management atmosphere.`
+  }
+
+  if (/livros|leitura|insights|autobiografi|aprendizado/.test(t)) {
+    return `An open business book with handwritten margin annotations and a yellow highlighted passage resting on a wooden desk, a black notebook with handwritten insights beside it, a coffee cup and a pen completing the scene, neon green (#30F282) sticky note bookmark between the pages. Warm bookish atmosphere, natural window light from the left. Harvard Business Review editorial flat-lay photography, 50mm overhead perspective, inviting intellectual calm.`
+  }
+
+  if (/saúde|saude|bem.estar|burnout|produtividade|equilíbrio|mental/.test(t)) {
+    return `A professional in business casual attire walking purposefully through a bright corporate campus outdoor path, sunlight filtering through trees, posture relaxed and confident, one arm slightly raised as if mid-stride, neon green (#30F282) lanyard or badge accent catching light. No posed smile, candid documentary moment. Energetic wellness photography, 35mm lens, natural warm sunlight, the human side of professional life.`
+  }
+
+  if (/tecnologia|lançamento|hardware|software|sistema|inovação|dispositivo/.test(t)) {
+    return `A product designer's hands holding a newly released tech device — laptop, phone, or hardware module — against a clean studio surface, the device screen active showing a fresh interface, a second display in the background showing product specs or a launch interface, neon green (#30F282) LED power indicator or accent strip visible on the device. Documentary product photography, 35mm lens, cool studio light, innovation and newness atmosphere.`
+  }
 
   if (tipo === 'comercial') {
 

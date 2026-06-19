@@ -3,11 +3,14 @@
  * Retorna lista de slots vazios no calendário para os próximos N dias.
  * Usado pela UI para mostrar o que será gerado e fazer chamadas individuais.
  *
- * Agenda fixa:
- *   Seg(1)/Qua(3)/Sex(5) → 08:00=Comercial, 13:00=Fatos TOTVS
- *   Ter(2)/Qui(4)         → 08:00=Autoridade, 13:00=Inteligência Artificial
- *   Sáb(6)               → gerarResumoSemanal (não listado aqui)
- *   Dom(0)               → sem posts
+ * Agenda:
+ *   Seg 08h → Comercial Oficina1       | Seg 13h → Gestão & Liderança
+ *   Ter 08h → TOTVS Protheus           | Ter 13h → Reforma Tributária
+ *   Qua 08h → Autoridade Oficina1      | Qua 13h → Mercado Financeiro
+ *   Qui 08h → Comercial Oficina1       | Qui 13h → Tecnologia (2ª qui/mês = Saúde)
+ *   Sex 08h → Inteligência Artificial  | Sex 13h → Livros & Insights
+ *   Sáb     → Resumo semanal (não listado aqui)
+ *   Dom     → sem posts
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -41,20 +44,31 @@ export async function GET(req: NextRequest) {
     ) ?? null
   }
 
-  // Resolve temas por dia da semana
-  function resolverTemas(diaSemana: number) {
-    if (diaSemana % 2 === 1) {
-      // Seg, Qua, Sex
-      return {
-        manha: encontrar(['comercial']),
-        tarde: encontrar(['fatos', 'relevantes', 'protheus']),
+  // Retorna true se a data cai na N-ésima ocorrência do dia da semana no mês
+  function isNthWeekdayOfMonth(date: Date, n: number): boolean {
+    return Math.ceil(date.getDate() / 7) === n
+  }
+
+  // Resolve temas pela data completa (permite lógica de mês para Saúde)
+  function resolverTemas(dia: Date) {
+    const diaSemana = dia.getDay()
+    switch (diaSemana) {
+      case 1: // Segunda
+        return { manha: encontrar(['comercial']), tarde: encontrar(['gestão', 'liderança']) }
+      case 2: // Terça
+        return { manha: encontrar(['totvs', 'protheus', 'fatos relevantes']), tarde: encontrar(['reforma', 'tributár']) }
+      case 3: // Quarta
+        return { manha: encontrar(['autoridade']), tarde: encontrar(['mercado financeiro', 'mercado fin', 'investimento']) }
+      case 4: { // Quinta
+        const tardeTema = isNthWeekdayOfMonth(dia, 2)
+          ? encontrar(['saúde', 'saude'])
+          : encontrar(['tecnologia', 'lançamento'])
+        return { manha: encontrar(['comercial']), tarde: tardeTema }
       }
-    } else {
-      // Ter, Qui
-      return {
-        manha: encontrar(['autoridade']),
-        tarde: encontrar(['inteligência artificial', 'inteligencia artificial', ' ia']),
-      }
+      case 5: // Sexta
+        return { manha: encontrar(['inteligência artificial', 'inteligencia artificial']), tarde: encontrar(['livros', 'insights']) }
+      default:
+        return { manha: null, tarde: null }
     }
   }
 
@@ -79,7 +93,7 @@ export async function GET(req: NextRequest) {
     if (diaSemana === 0 || diaSemana === 6) continue
     diasUteisEncontrados++
 
-    const { manha, tarde } = resolverTemas(diaSemana)
+    const { manha, tarde } = resolverTemas(dia)
     const candidatos = [
       { hora: SLOT_MANHA, tema: manha },
       { hora: SLOT_TARDE, tema: tarde },

@@ -2,12 +2,16 @@
  * Motor principal de geração de posts
  * Orquestra: busca na web → geração de texto → geração de imagem → salva no banco
  *
- * AGENDA FIXA:
- *   09:00 Seg/Qua/Sex → Comercial Oficina1
- *   09:00 Ter/Qui     → Autoridade Oficina1
- *   14:00 Seg/Qua/Sex → Fatos Relevantes TOTVS Protheus
- *   14:00 Ter/Qui     → Inteligência Artificial
- *   Sábado 09:00      → Resumo da semana
+ * AGENDA — Seg a Sex, 2 posts/dia:
+ *   Seg 08h → Comercial Oficina1       | Seg 13h → Gestão & Liderança
+ *   Ter 08h → TOTVS Protheus           | Ter 13h → Reforma Tributária
+ *   Qua 08h → Autoridade Oficina1      | Qua 13h → Mercado Financeiro
+ *   Qui 08h → Comercial Oficina1       | Qui 13h → Tecnologia & Lançamentos (*)
+ *   Sex 08h → Inteligência Artificial  | Sex 13h → Livros & Insights
+ *   Sáb     → Resumo da semana
+ *   Dom     → sem postagem
+ *
+ * (*) Na 2ª quinta-feira do mês, Tecnologia é substituído por Saúde no trabalho.
  */
 
 import { createClient } from './supabase-server'
@@ -27,29 +31,64 @@ const SLOT_MANHA = '08:00'
 const SLOT_TARDE = '13:00'
 
 /**
- * Dada uma lista de temas e um dia da semana, retorna qual tema vai em cada slot.
- * Dias ímpares (Seg=1, Qua=3, Sex=5): Comercial + Fatos
- * Dias pares  (Ter=2, Qui=4):         Autoridade + IA
+ * Retorna true se a data cai na N-ésima ocorrência do dia da semana no mês.
+ * Ex: isNthWeekdayOfMonth(date, 2) → true se for a 2ª quinta-feira do mês.
  */
-function resolverTemasDodia(temas: any[], diaSemana: number): {
+function isNthWeekdayOfMonth(date: Date, n: number): boolean {
+  return Math.ceil(date.getDate() / 7) === n
+}
+
+/**
+ * Dada a data completa, retorna qual tema vai em cada slot.
+ *
+ * Seg(1): Comercial        | Gestão & Liderança
+ * Ter(2): TOTVS Protheus   | Reforma Tributária
+ * Qua(3): Autoridade       | Mercado Financeiro
+ * Qui(4): Comercial        | Tecnologia (ou Saúde na 2ª quinta do mês)
+ * Sex(5): IA               | Livros & Insights
+ */
+function resolverTemasDodia(temas: any[], dia: Date): {
   manha: any | null
   tarde: any | null
 } {
   const encontrar = (keywords: string[]) =>
     temas.find(t => keywords.some(k => t.nome.toLowerCase().includes(k.toLowerCase()))) ?? null
 
-  if (diaSemana % 2 === 1) {
-    // Seg, Qua, Sex
-    return {
-      manha: encontrar(['comercial']),
-      tarde: encontrar(['fatos', 'relevantes', 'protheus']),
+  const diaSemana = dia.getDay()
+
+  switch (diaSemana) {
+    case 1: // Segunda
+      return {
+        manha: encontrar(['comercial']),
+        tarde: encontrar(['gestão', 'liderança']),
+      }
+    case 2: // Terça
+      return {
+        manha: encontrar(['totvs', 'protheus', 'fatos relevantes']),
+        tarde: encontrar(['reforma', 'tributár']),
+      }
+    case 3: // Quarta
+      return {
+        manha: encontrar(['autoridade']),
+        tarde: encontrar(['mercado financeiro', 'mercado fin', 'investimento']),
+      }
+    case 4: { // Quinta
+      // Na 2ª quinta-feira do mês → Saúde no trabalho substitui Tecnologia
+      const tardeTema = isNthWeekdayOfMonth(dia, 2)
+        ? encontrar(['saúde', 'saude'])
+        : encontrar(['tecnologia', 'lançamento'])
+      return {
+        manha: encontrar(['comercial']),
+        tarde: tardeTema,
+      }
     }
-  } else {
-    // Ter, Qui
-    return {
-      manha: encontrar(['autoridade']),
-      tarde: encontrar(['inteligência artificial', 'inteligencia artificial', ' ia']),
-    }
+    case 5: // Sexta
+      return {
+        manha: encontrar(['inteligência artificial', 'inteligencia artificial']),
+        tarde: encontrar(['livros', 'insights']),
+      }
+    default:
+      return { manha: null, tarde: null }
   }
 }
 
@@ -100,7 +139,7 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
     // Pula domingos (0) — sábado (6) é tratado por gerarResumoSemanal
     if (diaSemana === 0 || diaSemana === 6) continue
 
-    const { manha, tarde } = resolverTemasDodia(temas, diaSemana)
+    const { manha, tarde } = resolverTemasDodia(temas, dia)
     const slots = [
       { horario: SLOT_MANHA, tema: manha },
       { horario: SLOT_TARDE, tema: tarde },
