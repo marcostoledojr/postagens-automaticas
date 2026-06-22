@@ -26,8 +26,9 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${appUrl}/api/auth/linkedin-analytics/callback`
 
   // r_member_postAnalytics: leitura de analytics de posts pessoais
-  // Disponível após aprovação da Community Management API (Development Tier)
-  const scope = 'openid profile r_member_postAnalytics'
+  // r_basicprofile: perfil básico (nome, foto) — disponível via Community Management API
+  // NÃO usar openid/profile: requerem "Sign In with LinkedIn using OpenID Connect" (produto separado)
+  const scope = 'r_basicprofile r_member_postAnalytics'
 
   const url = new URL('https://www.linkedin.com/oauth/v2/authorization')
   url.searchParams.set('response_type', 'code')

@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
   if (error || !code) {
-    return NextResponse.redirect(`${appUrl}/analytics?erro=analytics_oauth_cancelado`)
+    const detalhe = encodeURIComponent(error ?? 'sem_code')
+    console.error('[LinkedIn Analytics OAuth] Erro recebido do LinkedIn:', error, searchParams.get('error_description'))
+    return NextResponse.redirect(`${appUrl}/analytics?erro=analytics_oauth_cancelado&detalhe=${detalhe}`)
   }
 
   const clientId = process.env.LINKEDIN_ANALYTICS_CLIENT_ID
