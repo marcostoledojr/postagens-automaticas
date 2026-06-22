@@ -7,7 +7,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const testarId = searchParams.get('id') // permite testar URN específico
   const supabase = createClient()
 
   // Busca tokens do banco
@@ -45,10 +47,10 @@ export async function GET() {
       : 'desconhecido',
   }))
 
-  // Seleciona primeiro post com ID real para teste
-  const postParaTeste = (posts ?? []).find(
-    p => p.linkedin_post_id && !p.linkedin_post_id.startsWith('make_')
-  )
+  // Se passou ?id=urn:li:share:... usa esse; senão pega o primeiro com ID real
+  const postParaTeste = testarId
+    ? { id: 'manual', linkedin_post_id: testarId, tema_nome: 'teste manual', publicado_em: null }
+    : (posts ?? []).find(p => p.linkedin_post_id && !p.linkedin_post_id.startsWith('make_'))
 
   if (!postParaTeste) {
     return NextResponse.json({

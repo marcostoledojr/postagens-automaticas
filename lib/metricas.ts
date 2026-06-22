@@ -174,6 +174,7 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
   }
 
   let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0
+  let rateLimitAtingido = false
 
   try {
     const entityParam = buildEntityParam(linkedinPostId)
@@ -181,10 +182,10 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
 
     // A API retorna uma métrica por chamada — fazemos 5 chamadas em sequência
     const metricTypes = [
-      { key: 'IMPRESSION', set: (v: number) => { impressoes = v } },
-      { key: 'REACTION',   set: (v: number) => { curtidas = v } },
-      { key: 'COMMENT',    set: (v: number) => { comentarios = v } },
-      { key: 'RESHARE',    set: (v: number) => { compartilhamentos = v } },
+      { key: 'IMPRESSION',  set: (v: number) => { impressoes = v } },
+      { key: 'REACTION',    set: (v: number) => { curtidas = v } },
+      { key: 'COMMENT',     set: (v: number) => { comentarios = v } },
+      { key: 'RESHARE',     set: (v: number) => { compartilhamentos = v } },
       { key: 'LINK_CLICKS', set: (v: number) => { cliques = v } },
     ]
 
@@ -198,21 +199,30 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
         metric.set(count)
       } else {
         const errText = await res.text().catch(() => '')
-        console.warn(`[Métricas] Creator Analytics ${metric.key} → ${res.status}: ${errText.slice(0, 120)}`)
-        // Se 403 com SCOPE_NOT_APPROVED: o app ainda não tem r_member_postAnalytics
+        console.warn(`[Métricas] Creator Analytics ${metric.key} → ${res.status}: ${errText.slice(0, 200)}`)
+
+        if (res.status === 429) {
+          // Rate limit atingido — para imediatamente sem salvar zeros
+          console.error(`[Métricas] RATE LIMIT atingido (429) ao coletar post ${postId}. Abortando ciclo.`)
+          rateLimitAtingido = true
+          break
+        }
         if (res.status === 403 && errText.includes('SCOPE_NOT_APPROVED')) {
           console.error('[Métricas] AÇÃO NECESSÁRIA: ative Community Management API no LinkedIn Developer Portal')
           break
         }
       }
 
-      await new Promise(r => setTimeout(r, 300)) // respeita rate limit (100 calls/membro/24h)
+      await new Promise(r => setTimeout(r, 400)) // respeita rate limit (100 calls/membro/24h)
     }
 
-    console.log(`[Métricas] Creator Analytics OK para ${postId}: ${impressoes} impressões, ${curtidas} reações, ${comentarios} comentários`)
+    console.log(`[Métricas] Creator Analytics para ${postId}: ${impressoes} impressões, ${curtidas} reações`)
   } catch (err) {
     console.error(`[Métricas] Erro na coleta do post ${postId}:`, err)
   }
+
+  // Se atingiu rate limit, NÃO salva zeros — deixa dados anteriores intactos
+  if (rateLimitAtingido) return false
 
   // Calcula score de engajamento
   const score = impressoes > 0
@@ -324,6 +334,8 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
         await new Promise(r => setTimeout(r, 500)) // pausa entre chamadas
       } else {
         pulados++
+        // Se retornou false por rate limit (não por ID inválido), para o ciclo
+        // coletarMetricas loga o motivo — aqui apenas registramos
       }
     } catch (err) {
       console.error(`[Métricas] Erro post ${post.id}:`, err)
