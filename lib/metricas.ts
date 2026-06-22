@@ -260,12 +260,14 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
   const supabase = createClient()
   const agora = new Date()
   const limite30dias = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000)
+  // Posts sem impressão são coletados mesmo se >30 dias (recuperação histórica)
+  const limite90dias = new Date(agora.getTime() - 90 * 24 * 60 * 60 * 1000)
 
   const { data: posts } = await supabase
     .from('posts')
     .select('id, linkedin_post_id, publicado_em')
     .eq('status', 'publicado')
-    .gte('publicado_em', limite30dias.toISOString())
+    .gte('publicado_em', limite90dias.toISOString())
     .not('linkedin_post_id', 'is', null)
 
   if (!posts || posts.length === 0) {
@@ -282,7 +284,7 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
     // Busca última coleta
     const { data: ultimaMetrica } = await supabase
       .from('metricas')
-      .select('coletado_em')
+      .select('coletado_em, impressoes')
       .eq('post_id', post.id)
       .maybeSingle()
 
@@ -290,16 +292,25 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
       ? (agora.getTime() - new Date(ultimaMetrica.coletado_em).getTime()) / (1000 * 60 * 60)
       : Infinity
 
+    // Se impressões estão zeradas (coleta anterior sem token ou com token inválido),
+    // força recoleta independente do intervalo — para recuperar dados reais
+    const impressoesZeradas = ultimaMetrica && (ultimaMetrica.impressoes ?? 0) === 0
+
     // Schedule de coleta:
-    //   0–7 dias   → coleta diária  (min 20h entre coletas)
-    //   8–30 dias  → coleta semanal (min 140h = ~6 dias entre coletas)
-    //   > 30 dias  → encerrado
+    //   impressões = 0  → força recoleta (recuperação — token estava ausente ou inválido)
+    //   0–7 dias        → coleta diária  (min 20h entre coletas)
+    //   8–30 dias       → coleta semanal (min 140h = ~6 dias entre coletas)
+    //   31–90 dias      → apenas se impressões = 0 (já coberto acima); caso contrário, encerrado
     let deveColetarAgora = false
-    if (diasDesdePublicacao <= 7) {
+    if (impressoesZeradas) {
+      // Força recoleta independente da idade — dado ainda não foi obtido com token válido
+      deveColetarAgora = true
+    } else if (diasDesdePublicacao <= 7) {
       deveColetarAgora = horasDesdeUltimaColeta >= 20
     } else if (diasDesdePublicacao <= 30) {
       deveColetarAgora = horasDesdeUltimaColeta >= 140
     }
+    // > 30 dias com impressões reais: score congelado, não coleta mais
 
     if (!deveColetarAgora) {
       pulados++
