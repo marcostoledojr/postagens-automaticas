@@ -96,6 +96,23 @@ export async function GET(req: Request) {
     parsed: r1.ok ? JSON.parse(raw1) : null,
   }
 
+  // Se share retornou 404, testa ugcPost com mesmo ID numérico
+  if (!r1.ok && r1.status === 404 && linkedinPostId.includes('urn:li:share:')) {
+    const numericId = linkedinPostId.replace('urn:li:share:', '')
+    const ugcEntity = `(ugc:urn%3Ali%3AugcPost%3A${numericId})`
+    const urlUgc = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${ugcEntity}&queryType=IMPRESSION&aggregation=TOTAL`
+    const rUgc = await fetch(urlUgc, { headers })
+    const rawUgc = await rUgc.text()
+    resultados['IMPRESSION_COMO_UGCPOST'] = {
+      status: rUgc.status,
+      ok: rUgc.ok,
+      ugcUrn: `urn:li:ugcPost:${numericId}`,
+      raw: rawUgc.slice(0, 800),
+      parsed: rUgc.ok ? JSON.parse(rawUgc) : null,
+      conclusao: rUgc.ok ? '✅ ugcPost funciona — URN salvo está errado (share→ugcPost)' : '❌ ugcPost também falhou — URN inválido ou post não encontrado',
+    }
+  }
+
   // Testa REACTION
   const url2 = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=REACTION&aggregation=TOTAL`
   const r2 = await fetch(url2, { headers })
