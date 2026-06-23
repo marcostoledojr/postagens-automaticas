@@ -195,7 +195,12 @@ function Analytics() {
     }
   }, [searchParams])
 
-  const totais = metricas.reduce((acc, m) => ({
+  // Considera apenas posts com pelo menos uma métrica real (exclui posts com todos os zeros)
+  const metricasValidas = metricas.filter(m =>
+    m.impressoes > 0 || m.curtidas > 0 || m.comentarios > 0 || m.compartilhamentos > 0 || m.cliques > 0
+  )
+
+  const totais = metricasValidas.reduce((acc, m) => ({
     impressoes: acc.impressoes + m.impressoes,
     curtidas: acc.curtidas + m.curtidas,
     comentarios: acc.comentarios + m.comentarios,
@@ -207,7 +212,7 @@ function Analytics() {
     ? ((totais.curtidas + totais.comentarios + totais.compartilhamentos + totais.cliques) / totais.impressoes * 100).toFixed(2)
     : null
 
-  const melhorPost = [...metricas].sort((a, b) => b.score_engajamento - a.score_engajamento)[0]
+  const melhorPost = [...metricasValidas].sort((a, b) => b.score_engajamento - a.score_engajamento)[0]
   const melhorTema = [...resumoTemas].sort((a, b) => b.score_medio - a.score_medio)[0]
   const melhorHorario = horarios.length > 0 ? horarios[0] : null
 
@@ -582,73 +587,6 @@ function Analytics() {
         </div>
       </div>
 
-      {/* Recuperação de posts anteriores */}
-      <div className="bg-white rounded-xl border border-slate-200 mb-6">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-slate-800">Recuperar Métricas de Posts Anteriores</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Posts publicados antes da configuração do Make.com. Cole a URL do LinkedIn de cada um.
-            </p>
-          </div>
-          <button
-            onClick={mostrarRecuperacao ? () => setMostrarRecuperacao(false) : carregarPostsSemId}
-            className="text-xs text-blue-600 hover:underline"
-          >
-            {mostrarRecuperacao ? 'Fechar' : 'Ver posts sem ID'}
-          </button>
-        </div>
-
-        {mostrarRecuperacao && (
-          <div className="divide-y divide-slate-100">
-            {postsSemId.length === 0 ? (
-              <div className="px-6 py-6 text-center text-slate-400 text-sm">
-                Todos os posts já têm ID real do LinkedIn.
-              </div>
-            ) : (
-              <>
-                <div className="px-6 py-3 bg-blue-50 text-xs text-blue-700">
-                  <strong>Como encontrar a URL:</strong> Vá ao seu perfil no LinkedIn → clique nos 3 pontinhos do post → "Copiar link do post" → cole abaixo.
-                </div>
-                {postsSemId.map(post => (
-                  <div key={post.id} className="px-6 py-4">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-slate-400 mb-0.5">
-                          {post.tema_nome} · {new Date(post.publicado_em).toLocaleDateString('pt-BR')}
-                        </p>
-                        <p className="text-sm text-slate-700 truncate">{post.texto.slice(0, 90)}...</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 w-96">
-                        <input
-                          type="text"
-                          placeholder="Cole a URL do post do LinkedIn..."
-                          value={urlsDigitadas[post.id] ?? ''}
-                          onChange={e => setUrlsDigitadas(prev => ({...prev, [post.id]: e.target.value}))}
-                          className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                        />
-                        <button
-                          onClick={() => salvarUrlLinkedIn(post.id)}
-                          disabled={!urlsDigitadas[post.id] || salvandoId === post.id}
-                          className="px-3 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {salvandoId === post.id ? '...' : 'Salvar'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {postsSemId.length > 0 && (
-                  <div className="px-6 py-3 bg-slate-50 text-xs text-slate-500 text-center">
-                    Após salvar os IDs, clique em <strong>Coletar Agora</strong> para buscar as métricas de todos.
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Loop de aprendizado */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
@@ -684,24 +622,37 @@ function Analytics() {
           <h3 className="font-semibold text-slate-800">Posts por Engajamento</h3>
         </div>
         <div className="divide-y divide-slate-100">
-          {metricas.length === 0 ? (
+          {metricasValidas.length === 0 ? (
             <div className="px-6 py-8 text-center text-slate-400 text-sm">
               {linkedin?.conectado
                 ? 'Métricas serão coletadas automaticamente às 7h. Primeiros dados amanhã.'
                 : 'Conecte o LinkedIn para começar a coletar métricas.'}
             </div>
           ) : (
-            metricas.slice(0, 15).map(m => (
+            metricasValidas.slice(0, 15).map(m => (
               <div key={m.post_id} className="px-6 py-4 flex items-center gap-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-slate-500 mb-0.5">{m.tema_nome} • {m.horario || '—'}</p>
+                  <p className="text-xs text-slate-500 mb-0.5">
+                    {m.tema_nome} • {m.publicado_em ? new Date(m.publicado_em).toLocaleDateString('pt-BR') : '—'} • {m.horario || '—'}
+                  </p>
                   <p className="text-sm text-slate-800 truncate">{m.texto.slice(0, 80)}...</p>
                 </div>
-                <div className="flex gap-3 text-xs text-slate-500 shrink-0">
-                  {m.impressoes > 0 && <span title="Impressões">👁 {m.impressoes.toLocaleString('pt-BR')}</span>}
-                  <span title="Curtidas">❤️ {m.curtidas}</span>
-                  <span title="Comentários">💬 {m.comentarios}</span>
-                  {m.cliques > 0 && <span title="Cliques">🖱 {m.cliques}</span>}
+                <div className="flex gap-4 text-xs text-slate-500 shrink-0">
+                  <span title="Impressões" className="flex items-center gap-1">
+                    <Eye size={12} /> {m.impressoes > 0 ? m.impressoes.toLocaleString('pt-BR') : '—'}
+                  </span>
+                  <span title="Curtidas" className="flex items-center gap-1">
+                    <Heart size={12} /> {m.curtidas}
+                  </span>
+                  <span title="Comentários" className="flex items-center gap-1">
+                    <MessageCircle size={12} /> {m.comentarios}
+                  </span>
+                  <span title="Compartilhamentos" className="flex items-center gap-1">
+                    <Share2 size={12} /> {m.compartilhamentos}
+                  </span>
+                  <span title="Cliques" className="flex items-center gap-1">
+                    <MousePointer size={12} /> {m.cliques}
+                  </span>
                 </div>
                 <div className="w-16 text-right shrink-0">
                   <span className="text-xs font-semibold text-blue-600">
