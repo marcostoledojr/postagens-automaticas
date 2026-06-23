@@ -219,12 +219,12 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
     const entityParam = buildEntityParam(urnAtivo)
     const baseUrl = 'https://api.linkedin.com/rest/memberCreatorPostAnalytics'
 
-    // IMPRESSION já foi obtida no probe acima — coleta apenas as demais 4 métricas
+    // IMPRESSION já foi obtida no probe acima — coleta as demais métricas disponíveis
+    // LINK_CLICKS não é um enum válido nesta API (retorna 400) — cliques ficam 0
     const metricTypes = [
-      { key: 'REACTION',    set: (v: number) => { curtidas = v } },
-      { key: 'COMMENT',     set: (v: number) => { comentarios = v } },
-      { key: 'RESHARE',     set: (v: number) => { compartilhamentos = v } },
-      { key: 'LINK_CLICKS', set: (v: number) => { cliques = v } },
+      { key: 'REACTION', set: (v: number) => { curtidas = v } },
+      { key: 'COMMENT',  set: (v: number) => { comentarios = v } },
+      { key: 'RESHARE',  set: (v: number) => { compartilhamentos = v } },
     ]
 
     for (const metric of metricTypes) {
