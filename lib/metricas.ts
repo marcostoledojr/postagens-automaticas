@@ -176,13 +176,51 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
   let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0
   let rateLimitAtingido = false
 
+  // Resolve o URN correto: se vier share mas for ugcPost, corrige automaticamente
+  let urnAtivo = linkedinPostId
   try {
-    const entityParam = buildEntityParam(linkedinPostId)
+    const entityParam = buildEntityParam(urnAtivo)
+    const baseUrl = 'https://api.linkedin.com/rest/memberCreatorPostAnalytics'
+    const probeUrl = `${baseUrl}?q=entity&entity=${entityParam}&queryType=IMPRESSION&aggregation=TOTAL`
+    const probeRes = await fetch(probeUrl, { headers })
+    if (probeRes.status === 404 && urnAtivo.includes('urn:li:share:')) {
+      // Tenta ugcPost com o mesmo ID numérico
+      const numericId = urnAtivo.replace('urn:li:share:', '')
+      const ugcUrn = `urn:li:ugcPost:${numericId}`
+      const ugcEntity = buildEntityParam(ugcUrn)
+      const ugcProbe = await fetch(`${baseUrl}?q=entity&entity=${ugcEntity}&queryType=IMPRESSION&aggregation=TOTAL`, { headers })
+      if (ugcProbe.ok) {
+        console.log(`[Métricas] URN corrigido share→ugcPost para post ${postId}: ${ugcUrn}`)
+        urnAtivo = ugcUrn
+        // Persiste a correção no banco para evitar 404 nas próximas coletas
+        const supabaseUpdate = createClient()
+        await supabaseUpdate.from('posts').update({ linkedin_post_id: ugcUrn }).eq('id', postId)
+      } else {
+        console.warn(`[Métricas] Post ${postId} retornou 404 tanto como share quanto ugcPost. Pulando.`)
+        return false
+      }
+    } else if (probeRes.status === 429) {
+      console.error(`[Métricas] RATE LIMIT (429) no probe de ${postId}. Abortando.`)
+      return false
+    } else if (!probeRes.ok && probeRes.status !== 200) {
+      console.warn(`[Métricas] Probe falhou (${probeRes.status}) para ${postId}. Pulando.`)
+      return false
+    } else if (probeRes.ok) {
+      // Probe OK — lê o valor de IMPRESSION do resultado já obtido
+      const probeData = await probeRes.json()
+      impressoes = probeData.elements?.[0]?.count ?? 0
+    }
+  } catch (probeErr) {
+    console.error(`[Métricas] Erro no probe de ${postId}:`, probeErr)
+    return false
+  }
+
+  try {
+    const entityParam = buildEntityParam(urnAtivo)
     const baseUrl = 'https://api.linkedin.com/rest/memberCreatorPostAnalytics'
 
-    // A API retorna uma métrica por chamada — fazemos 5 chamadas em sequência
+    // IMPRESSION já foi obtida no probe acima — coleta apenas as demais 4 métricas
     const metricTypes = [
-      { key: 'IMPRESSION',  set: (v: number) => { impressoes = v } },
       { key: 'REACTION',    set: (v: number) => { curtidas = v } },
       { key: 'COMMENT',     set: (v: number) => { comentarios = v } },
       { key: 'RESHARE',     set: (v: number) => { compartilhamentos = v } },
