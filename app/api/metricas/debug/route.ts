@@ -113,24 +113,50 @@ export async function GET(req: Request) {
     }
   }
 
-  // Testa REACTION
+  // Testa REACTION (curtidas)
   const url2 = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=REACTION&aggregation=TOTAL`
   const r2 = await fetch(url2, { headers })
   const raw2 = await r2.text()
   resultados['REACTION_TOTAL'] = {
     status: r2.status,
     ok: r2.ok,
-    raw: raw2.slice(0, 800),
+    count: r2.ok ? (JSON.parse(raw2).elements?.[0]?.count ?? 'sem elements') : null,
+    raw: raw2.slice(0, 400),
   }
 
-  // Testa sem aggregation (talvez retorne mais dados)
-  const url3 = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}`
-  const r3 = await fetch(url3, { headers })
-  const raw3 = await r3.text()
-  resultados['SEM_QUERYTYPE'] = {
-    status: r3.status,
-    ok: r3.ok,
-    raw: raw3.slice(0, 800),
+  // Testa COMMENT (comentários)
+  const urlComment = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=COMMENT&aggregation=TOTAL`
+  const rComment = await fetch(urlComment, { headers })
+  const rawComment = await rComment.text()
+  resultados['COMMENT_TOTAL'] = {
+    status: rComment.status,
+    ok: rComment.ok,
+    count: rComment.ok ? (JSON.parse(rawComment).elements?.[0]?.count ?? 'sem elements') : null,
+    raw: rawComment.slice(0, 400),
+  }
+
+  // PONTO CRÍTICO — Testa RESHARE (compartilhamentos)
+  const urlReshare = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=RESHARE&aggregation=TOTAL`
+  const rReshare = await fetch(urlReshare, { headers })
+  const rawReshare = await rReshare.text()
+  resultados['RESHARE_TOTAL'] = {
+    status: rReshare.status,
+    ok: rReshare.ok,
+    count: rReshare.ok ? (JSON.parse(rawReshare).elements?.[0]?.count ?? 'sem elements') : null,
+    raw: rawReshare.slice(0, 400),
+    diagnostico: !rReshare.ok ? '❌ RESHARE não suportado neste tier/token' : '✅ RESHARE OK',
+  }
+
+  // Testa LINK_CLICKS (cliques)
+  const urlClicks = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=LINK_CLICKS&aggregation=TOTAL`
+  const rClicks = await fetch(urlClicks, { headers })
+  const rawClicks = await rClicks.text()
+  resultados['LINK_CLICKS_TOTAL'] = {
+    status: rClicks.status,
+    ok: rClicks.ok,
+    count: rClicks.ok ? (JSON.parse(rawClicks).elements?.[0]?.count ?? 'sem elements') : null,
+    raw: rawClicks.slice(0, 400),
+    diagnostico: !rClicks.ok ? '❌ LINK_CLICKS não suportado neste tier/token' : '✅ LINK_CLICKS OK',
   }
 
   // Testa com token de PUBLICAÇÃO (não analytics) — comparação
