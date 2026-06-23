@@ -388,13 +388,12 @@ function Analytics() {
       )}
 
       {/* Cards de totais */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Impressões',       value: totais.impressoes,       icon: Eye,           color: 'text-slate-600', bg: 'bg-slate-100' },
-          { label: 'Curtidas',         value: totais.curtidas,         icon: Heart,         color: 'text-red-500',   bg: 'bg-red-50'    },
-          { label: 'Comentários',      value: totais.comentarios,      icon: MessageCircle, color: 'text-blue-500',  bg: 'bg-blue-50'   },
-          { label: 'Compartilhamentos',value: totais.compartilhamentos,icon: Share2,        color: 'text-green-500', bg: 'bg-green-50'  },
-          { label: 'Cliques',          value: totais.cliques,          icon: MousePointer,  color: 'text-purple-500',bg: 'bg-purple-50' },
+          { label: 'Impressões',        value: totais.impressoes,        icon: Eye,           color: 'text-slate-600', bg: 'bg-slate-100' },
+          { label: 'Curtidas',          value: totais.curtidas,          icon: Heart,         color: 'text-red-500',   bg: 'bg-red-50'    },
+          { label: 'Comentários',       value: totais.comentarios,       icon: MessageCircle, color: 'text-blue-500',  bg: 'bg-blue-50'   },
+          { label: 'Compartilhamentos', value: totais.compartilhamentos, icon: Share2,        color: 'text-green-500', bg: 'bg-green-50'  },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-4">
             <div className={`${bg} p-2 rounded-lg w-fit mb-3`}>
@@ -547,7 +546,7 @@ function Analytics() {
                     <p className="text-sm font-medium text-slate-800">{tema.tema_nome}</p>
                     <p className="text-xs text-slate-400">{tema.total_posts} posts</p>
                   </div>
-                  <div className="flex-1 grid grid-cols-5 gap-3 text-xs text-center">
+                  <div className="flex-1 grid grid-cols-4 gap-3 text-xs text-center">
                     <div>
                       <p className="font-semibold text-slate-800">
                         {tema.media_impressoes > 0 ? Math.round(tema.media_impressoes).toLocaleString('pt-BR') : '—'}
@@ -561,12 +560,6 @@ function Analytics() {
                     <div>
                       <p className="font-semibold text-slate-800">{Math.round(tema.media_comentarios)}</p>
                       <p className="text-slate-400">Comentários</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-800">
-                        {tema.media_cliques > 0 ? Math.round(tema.media_cliques) : '—'}
-                      </p>
-                      <p className="text-slate-400">Cliques</p>
                     </div>
                     <div>
                       <p className="font-semibold text-blue-600">{tema.score_medio.toFixed(2)}</p>
@@ -649,9 +642,6 @@ function Analytics() {
                   </span>
                   <span title="Compartilhamentos" className="flex items-center gap-1">
                     <Share2 size={12} /> {m.compartilhamentos}
-                  </span>
-                  <span title="Cliques" className="flex items-center gap-1">
-                    <MousePointer size={12} /> {m.cliques}
                   </span>
                 </div>
                 <div className="w-16 text-right shrink-0">
