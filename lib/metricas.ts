@@ -317,7 +317,7 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
  * Coleta métricas de todos os posts publicados nos últimos 30 dias
  * seguindo o schedule de frequência por idade do post.
  */
-export async function coletarMetricasRecentes(): Promise<{ coletados: number; pulados: number }> {
+export async function coletarMetricasRecentes(force = false): Promise<{ coletados: number; pulados: number }> {
   const supabase = createClient()
   const agora = new Date()
   const limite30dias = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -363,7 +363,10 @@ export async function coletarMetricasRecentes(): Promise<{ coletados: number; pu
     //   8–30 dias       → coleta semanal (min 140h = ~6 dias entre coletas)
     //   31–90 dias      → apenas se impressões = 0 (já coberto acima); caso contrário, encerrado
     let deveColetarAgora = false
-    if (impressoesZeradas) {
+    if (force) {
+      // Modo força: ignora intervalos — recoleta tudo dentro de 30 dias
+      deveColetarAgora = diasDesdePublicacao <= 30
+    } else if (impressoesZeradas) {
       // Força recoleta independente da idade — dado ainda não foi obtido com token válido
       deveColetarAgora = true
     } else if (diasDesdePublicacao <= 7) {

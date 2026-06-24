@@ -153,11 +153,12 @@ function Analytics() {
     }
   }
 
-  async function coletarAgora() {
+  async function coletarAgora(force = false) {
     setColetando(true)
     setNotificacao(null)
     try {
-      const res = await fetch('/api/metricas/coletar', { method: 'POST' })
+      const url = force ? '/api/metricas/coletar?force=true' : '/api/metricas/coletar'
+      const res = await fetch(url, { method: 'POST' })
       const json = await res.json()
       if (!res.ok || !json.ok) {
         setNotificacao(`⚠ Erro na coleta: ${json.erro ?? 'Tente novamente.'}`)
@@ -278,13 +279,22 @@ function Analytics() {
             />
           </label>
           <button
-            onClick={coletarAgora}
+            onClick={() => coletarAgora(false)}
             disabled={coletando}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            title="Buscar métricas do LinkedIn agora"
+            title="Buscar métricas do LinkedIn (respeita intervalo de 20h)"
           >
             <RefreshCw size={14} className={coletando ? 'animate-spin' : ''} />
             {coletando ? 'Coletando...' : 'Coletar Agora'}
+          </button>
+          <button
+            onClick={() => coletarAgora(true)}
+            disabled={coletando}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            title="Força recoleta de todos os posts (ignora intervalo de 20h)"
+          >
+            <RefreshCw size={14} className={coletando ? 'animate-spin' : ''} />
+            {coletando ? 'Coletando...' : 'Forçar Recoleta'}
           </button>
           <button
             onClick={async () => { setRefreshing(true); await carregar(); setRefreshing(false) }}
