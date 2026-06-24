@@ -159,6 +159,49 @@ export async function GET(req: Request) {
     diagnostico: !rClicks.ok ? '❌ LINK_CLICKS não suportado neste tier/token' : '✅ LINK_CLICKS OK',
   }
 
+  // ─── ALTERNATIVAS para compartilhamentos totais (inclui páginas empresa) ────
+  // Usa o token de PUBLICAÇÃO que tem w_member_social
+  const headersV2: HeadersInit = {
+    Authorization: `Bearer ${publishToken ?? activeToken}`,
+    'X-Restli-Protocol-Version': '2.0.0',
+  }
+  const numericId = linkedinPostId.replace('urn:li:share:', '').replace('urn:li:ugcPost:', '')
+
+  // Opção 1: v2/shares com totalShareStatistics
+  const urlV2Share = `https://api.linkedin.com/v2/shares/urn%3Ali%3Ashare%3A${numericId}?projection=(id,totalShareStatistics)`
+  const rV2Share = await fetch(urlV2Share, { headers: headersV2 })
+  const rawV2Share = await rV2Share.text()
+  resultados['V2_SHARES_STATISTICS'] = {
+    status: rV2Share.status,
+    ok: rV2Share.ok,
+    raw: rawV2Share.slice(0, 600),
+    parsed: rV2Share.ok ? JSON.parse(rawV2Share) : null,
+  }
+
+  // Opção 2: v2/socialCounts — retorna shareCount total incluindo empresa
+  const urlSocialCounts = `https://api.linkedin.com/v2/socialCounts/urn%3Ali%3Ashare%3A${numericId}`
+  const rSocialCounts = await fetch(urlSocialCounts, { headers: headersV2 })
+  const rawSocialCounts = await rSocialCounts.text()
+  resultados['V2_SOCIAL_COUNTS'] = {
+    status: rSocialCounts.status,
+    ok: rSocialCounts.ok,
+    raw: rawSocialCounts.slice(0, 600),
+    parsed: rSocialCounts.ok ? JSON.parse(rawSocialCounts) : null,
+  }
+
+  // Opção 3: rest/posts/{postUrn} — API mais recente, retorna estatísticas do post
+  const urlRestPost = `https://api.linkedin.com/rest/posts/urn%3Ali%3Ashare%3A${numericId}`
+  const rRestPost = await fetch(urlRestPost, {
+    headers: { ...headersV2, 'LinkedIn-Version': '202506' },
+  })
+  const rawRestPost = await rRestPost.text()
+  resultados['REST_POST_DETAIL'] = {
+    status: rRestPost.status,
+    ok: rRestPost.ok,
+    raw: rawRestPost.slice(0, 600),
+    parsed: rRestPost.ok ? JSON.parse(rawRestPost) : null,
+  }
+
   // Testa com token de PUBLICAÇÃO (não analytics) — comparação
   if (publishToken && publishToken !== activeToken) {
     const headersPublish: HeadersInit = {
