@@ -3,7 +3,8 @@ import { useEffect, useState, Suspense, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   TrendingUp, Heart, MessageCircle, Share2, Eye, Award,
-  Zap, Clock, RefreshCw, Wifi, WifiOff, MousePointer, Upload
+  Zap, Clock, RefreshCw, Wifi, WifiOff, MousePointer, Upload,
+  Bookmark, Send, UserPlus, Search
 } from 'lucide-react'
 
 type MetricaPost = {
@@ -17,6 +18,10 @@ type MetricaPost = {
   comentarios: number
   compartilhamentos: number
   cliques: number
+  salvamentos: number
+  envios: number
+  seguidores_obtidos: number
+  visualizacoes_perfil: number
   score_engajamento: number
 }
 
@@ -197,7 +202,8 @@ function Analytics() {
 
   // Considera apenas posts com pelo menos uma métrica real (exclui posts com todos os zeros)
   const metricasValidas = metricas.filter(m =>
-    m.impressoes > 0 || m.curtidas > 0 || m.comentarios > 0 || m.compartilhamentos > 0 || m.cliques > 0
+    m.impressoes > 0 || m.curtidas > 0 || m.comentarios > 0 || m.compartilhamentos > 0 ||
+    m.cliques > 0 || m.salvamentos > 0 || m.envios > 0 || m.seguidores_obtidos > 0 || m.visualizacoes_perfil > 0
   )
 
   const totais = metricasValidas.reduce((acc, m) => ({
@@ -206,10 +212,18 @@ function Analytics() {
     comentarios: acc.comentarios + m.comentarios,
     compartilhamentos: acc.compartilhamentos + m.compartilhamentos,
     cliques: acc.cliques + m.cliques,
-  }), { impressoes: 0, curtidas: 0, comentarios: 0, compartilhamentos: 0, cliques: 0 })
+    salvamentos: acc.salvamentos + m.salvamentos,
+    envios: acc.envios + m.envios,
+    seguidores_obtidos: acc.seguidores_obtidos + m.seguidores_obtidos,
+    visualizacoes_perfil: acc.visualizacoes_perfil + m.visualizacoes_perfil,
+  }), { impressoes: 0, curtidas: 0, comentarios: 0, compartilhamentos: 0, cliques: 0, salvamentos: 0, envios: 0, seguidores_obtidos: 0, visualizacoes_perfil: 0 })
 
   const taxaEngajamentoGeral = totais.impressoes > 0
-    ? ((totais.curtidas + totais.comentarios + totais.compartilhamentos + totais.cliques) / totais.impressoes * 100).toFixed(2)
+    ? (
+        (totais.curtidas + totais.comentarios * 3 + totais.salvamentos * 3 +
+         totais.envios * 2 + totais.cliques * 0.5 + totais.compartilhamentos * 5) /
+        totais.impressoes * 100
+      ).toFixed(2)
     : null
 
   const melhorPost = [...metricasValidas].sort((a, b) => b.score_engajamento - a.score_engajamento)[0]
@@ -387,13 +401,32 @@ function Analytics() {
         </div>
       )}
 
-      {/* Cards de totais */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      {/* Cards de totais — linha 1 */}
+      <div className="grid grid-cols-4 gap-4 mb-3">
         {[
           { label: 'Impressões',        value: totais.impressoes,        icon: Eye,           color: 'text-slate-600', bg: 'bg-slate-100' },
           { label: 'Curtidas',          value: totais.curtidas,          icon: Heart,         color: 'text-red-500',   bg: 'bg-red-50'    },
           { label: 'Comentários',       value: totais.comentarios,       icon: MessageCircle, color: 'text-blue-500',  bg: 'bg-blue-50'   },
           { label: 'Compartilhamentos', value: totais.compartilhamentos, icon: Share2,        color: 'text-green-500', bg: 'bg-green-50'  },
+        ].map(({ label, value, icon: Icon, color, bg }) => (
+          <div key={label} className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className={`${bg} p-2 rounded-lg w-fit mb-3`}>
+              <Icon size={18} className={color} />
+            </div>
+            <p className="text-2xl font-bold text-slate-900">
+              {value > 0 ? value.toLocaleString('pt-BR') : '—'}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+          </div>
+        ))}
+      </div>
+      {/* Cards de totais — linha 2 (novas métricas) */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Cliques no Link',         value: totais.cliques,             icon: MousePointer, color: 'text-orange-500',  bg: 'bg-orange-50'  },
+          { label: 'Salvamentos',             value: totais.salvamentos,         icon: Bookmark,     color: 'text-purple-500',  bg: 'bg-purple-50'  },
+          { label: 'Envios por DM',           value: totais.envios,              icon: Send,         color: 'text-cyan-500',    bg: 'bg-cyan-50'    },
+          { label: 'Seguidores Obtidos',      value: totais.seguidores_obtidos,  icon: UserPlus,     color: 'text-emerald-500', bg: 'bg-emerald-50' },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-4">
             <div className={`${bg} p-2 rounded-lg w-fit mb-3`}>
@@ -630,7 +663,7 @@ function Analytics() {
                   </p>
                   <p className="text-sm text-slate-800 truncate">{m.texto.slice(0, 80)}...</p>
                 </div>
-                <div className="flex gap-4 text-xs text-slate-500 shrink-0">
+                <div className="flex gap-3 text-xs text-slate-500 shrink-0">
                   <span title="Impressões" className="flex items-center gap-1">
                     <Eye size={12} /> {m.impressoes > 0 ? m.impressoes.toLocaleString('pt-BR') : '—'}
                   </span>
@@ -640,8 +673,14 @@ function Analytics() {
                   <span title="Comentários" className="flex items-center gap-1">
                     <MessageCircle size={12} /> {m.comentarios}
                   </span>
-                  <span title="Compartilhamentos" className="flex items-center gap-1">
-                    <Share2 size={12} /> {m.compartilhamentos}
+                  <span title="Cliques no link" className="flex items-center gap-1 text-orange-500">
+                    <MousePointer size={12} /> {m.cliques > 0 ? m.cliques : '—'}
+                  </span>
+                  <span title="Salvamentos" className="flex items-center gap-1 text-purple-500">
+                    <Bookmark size={12} /> {m.salvamentos > 0 ? m.salvamentos : '—'}
+                  </span>
+                  <span title="Envios por DM" className="flex items-center gap-1 text-cyan-500">
+                    <Send size={12} /> {m.envios > 0 ? m.envios : '—'}
                   </span>
                 </div>
                 <div className="w-16 text-right shrink-0">

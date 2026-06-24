@@ -170,10 +170,11 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
   const headers: HeadersInit = {
     Authorization: `Bearer ${activeToken}`,
     'X-Restli-Protocol-Version': '2.0.0',
-    'LinkedIn-Version': '202506',
+    'LinkedIn-Version': '202605',
   }
 
   let impressoes = 0, curtidas = 0, comentarios = 0, compartilhamentos = 0, cliques = 0
+  let salvamentos = 0, envios = 0, seguidores_obtidos = 0, visualizacoes_perfil = 0
   let rateLimitAtingido = false
 
   // Resolve o URN correto: se vier share mas for ugcPost, corrige automaticamente
@@ -219,12 +220,18 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
     const entityParam = buildEntityParam(urnAtivo)
     const baseUrl = 'https://api.linkedin.com/rest/memberCreatorPostAnalytics'
 
-    // IMPRESSION já foi obtida no probe acima — coleta as demais métricas disponíveis
-    // LINK_CLICKS não é um enum válido nesta API (retorna 400) — cliques ficam 0
+    // IMPRESSION já foi obtida no probe acima — coleta as demais métricas
+    // Versão 202605+ desbloqueia LINK_CLICKS, POST_SAVE, POST_SEND, FOLLOWER_GAINED_FROM_CONTENT, PROFILE_VIEW_FROM_CONTENT
+    // RESHARE retorna 0 para reshares de páginas empresa (limitação documentada do LinkedIn)
     const metricTypes = [
-      { key: 'REACTION', set: (v: number) => { curtidas = v } },
-      { key: 'COMMENT',  set: (v: number) => { comentarios = v } },
-      { key: 'RESHARE',  set: (v: number) => { compartilhamentos = v } },
+      { key: 'REACTION',                    set: (v: number) => { curtidas = v } },
+      { key: 'COMMENT',                     set: (v: number) => { comentarios = v } },
+      { key: 'RESHARE',                     set: (v: number) => { compartilhamentos = v } },
+      { key: 'LINK_CLICKS',                 set: (v: number) => { cliques = v } },
+      { key: 'POST_SAVE',                   set: (v: number) => { salvamentos = v } },
+      { key: 'POST_SEND',                   set: (v: number) => { envios = v } },
+      { key: 'FOLLOWER_GAINED_FROM_CONTENT',set: (v: number) => { seguidores_obtidos = v } },
+      { key: 'PROFILE_VIEW_FROM_CONTENT',   set: (v: number) => { visualizacoes_perfil = v } },
     ]
 
     for (const metric of metricTypes) {
@@ -263,9 +270,11 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
   if (rateLimitAtingido) return false
 
   // Calcula score de engajamento
+  // Pesos: curtidas=1, comentários=3, salvamentos=3, envios=2, cliques=0.5, compartilhamentos=5
+  const engajamento = curtidas + comentarios * 3 + salvamentos * 3 + envios * 2 + cliques * 0.5 + compartilhamentos * 5
   const score = impressoes > 0
-    ? parseFloat(((curtidas + comentarios * 3 + compartilhamentos * 5 + cliques * 0.5) / impressoes * 100).toFixed(4))
-    : curtidas + comentarios * 3 + compartilhamentos * 5
+    ? parseFloat((engajamento / impressoes * 100).toFixed(4))
+    : engajamento
 
   const payload = {
     impressoes,
@@ -273,6 +282,10 @@ export async function coletarMetricas(postId: string, linkedinPostId: string): P
     comentarios,
     compartilhamentos,
     cliques,
+    salvamentos,
+    envios,
+    seguidores_obtidos,
+    visualizacoes_perfil,
     score_engajamento: score,
     coletado_em: new Date().toISOString(),
   }
