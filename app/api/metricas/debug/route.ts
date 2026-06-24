@@ -69,7 +69,7 @@ export async function GET(req: Request) {
   const headers: HeadersInit = {
     Authorization: `Bearer ${activeToken}`,
     'X-Restli-Protocol-Version': '2.0.0',
-    'LinkedIn-Version': '202506',
+    'LinkedIn-Version': '202605',
   }
 
   const linkedinPostId = postParaTeste.linkedin_post_id
@@ -157,6 +157,20 @@ export async function GET(req: Request) {
     count: rClicks.ok ? (JSON.parse(rawClicks).elements?.[0]?.count ?? 'sem elements') : null,
     raw: rawClicks.slice(0, 400),
     diagnostico: !rClicks.ok ? '❌ LINK_CLICKS não suportado neste tier/token' : '✅ LINK_CLICKS OK',
+  }
+
+  // ─── Testa novos queryTypes da versão 202605 ────────────────────────────────
+  for (const qType of ['POST_SAVE', 'POST_SEND', 'FOLLOWER_GAINED_FROM_CONTENT', 'PROFILE_VIEW_FROM_CONTENT']) {
+    const urlQ = `https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=${entityParam}&queryType=${qType}&aggregation=TOTAL`
+    const rQ = await fetch(urlQ, { headers })
+    const rawQ = await rQ.text()
+    resultados[qType] = {
+      status: rQ.status,
+      ok: rQ.ok,
+      count: rQ.ok ? (JSON.parse(rawQ).elements?.[0]?.count ?? 'sem elements') : null,
+      raw: rawQ.slice(0, 300),
+      diagnostico: rQ.ok ? `✅ ${qType} OK` : `❌ ${qType} não suportado`,
+    }
   }
 
   // ─── ALTERNATIVAS para compartilhamentos totais (inclui páginas empresa) ────
