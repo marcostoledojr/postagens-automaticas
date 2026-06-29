@@ -414,9 +414,9 @@ LEMBRETES:
       imagem_prompt: null,
       hashtags: hashtagsEncontradas.slice(0, 6),
       fontes_pesquisa: [],
-      status: 'pendente',
+      status: 'agendado',  // auto-aprovado: resumo semanal não precisa de revisão manual
       data_agendada: dataPublicacao.toISOString(),
-      horario_publicacao: '10:00',
+      horario_publicacao: '08:00',
     })
 
     if (error) throw error

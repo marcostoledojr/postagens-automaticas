@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   TrendingUp, Heart, MessageCircle, Share2, Eye, Award,
   Zap, Clock, RefreshCw, Wifi, WifiOff, MousePointer, Upload,
-  Bookmark, Send, UserPlus, Search
+  Bookmark, Send, UserPlus, Search, FileText
 } from 'lucide-react'
 
 type MetricaPost = {
@@ -80,6 +80,7 @@ function Analytics() {
   const [salvandoId, setSalvandoId] = useState<string | null>(null)
   const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [gerandoResumo, setGerandoResumo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function carregar() {
@@ -150,6 +151,24 @@ function Analytics() {
       }
     } finally {
       setSalvandoId(null)
+    }
+  }
+
+  async function gerarResumoSemanal() {
+    setGerandoResumo(true)
+    setNotificacao(null)
+    try {
+      const res = await fetch('/api/resumo-semanal', { method: 'POST' })
+      const json = await res.json()
+      if (json.ok) {
+        setNotificacao('✓ Resumo semanal gerado e agendado para sábado às 8h — veja na Fila para aprovar.')
+      } else {
+        setNotificacao(`⚠ ${json.erro}`)
+      }
+    } catch (err: any) {
+      setNotificacao(`⚠ Erro: ${err.message}`)
+    } finally {
+      setGerandoResumo(false)
     }
   }
 
@@ -264,6 +283,15 @@ function Analytics() {
             <option value="30">Últimos 30 dias</option>
             <option value="90">Últimos 90 dias</option>
           </select>
+          <button
+            onClick={gerarResumoSemanal}
+            disabled={gerandoResumo}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            title="Gerar resumo semanal manualmente (caso o cron da sexta não tenha rodado)"
+          >
+            <FileText size={14} className={gerandoResumo ? 'animate-pulse' : ''} />
+            {gerandoResumo ? 'Gerando...' : 'Gerar Resumo'}
+          </button>
           <label
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 cursor-pointer transition-colors"
             title="Importar Excel exportado do LinkedIn (Análise da publicação)"
