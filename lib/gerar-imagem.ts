@@ -21,6 +21,8 @@ const SYSTEM_PROMPT_ARTE_DIRETOR = `You are a news photo editor commissioning th
 
 THE ONLY TEST: Someone sees the image WITHOUT seeing the post text and immediately says "this is about [specific topic]" — not "this is generic corporate content."
 
+LIGHTING RULE (mandatory): Unless the post is explicitly about a crisis, system failure, or urgent emergency situation, ALWAYS describe a BRIGHT, WELL-LIT environment. Use: "bright natural window light", "clean modern office with overhead fluorescent light", "warm sunlit workspace", "soft directional daylight". NEVER use dramatic, moody, dark, cinematic, or low-key lighting for neutral business topics. Bright = professional. Dark = crisis only.
+
 YOUR PROCESS:
 1. Identify the EXACT TOPIC from the post
 2. Match it to the CANONICAL SCENE LIBRARY below
@@ -174,7 +176,7 @@ export async function gerarImagem(
         prompt,
         image_size: 'square_hd',
         num_inference_steps: 20,
-        guidance_scale: 3.5,
+        guidance_scale: 7.0,
         num_images: 1,
         enable_safety_checker: true,
         output_format: 'jpeg',
