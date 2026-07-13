@@ -165,18 +165,33 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
         console.log(`Gerando ${format(dataSlot, 'dd/MM HH:mm')} — ${tema.nome}`)
 
         const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        const { data: postsDoMes } = await supabase
-          .from('posts').select('texto').eq('tema_id', tema.id)
+
+        // Ganchos recentes do mesmo tema — evita repetir abertura
+        const { data: postsDoTema } = await supabase
+          .from('posts').select('texto')
+          .eq('tema_id', tema.id)
           .gte('created_at', trintaDiasAtras.toISOString())
-          .in('status', ['pendente', 'aprovado', 'agendado', 'publicado'])
-          .order('created_at', { ascending: false }).limit(20)
-        const angulosRecentes = (postsDoMes ?? [])
+          .in('status', ['aprovado', 'agendado', 'publicado'])
+          .order('created_at', { ascending: false }).limit(8)
+        const angulosRecentes = (postsDoTema ?? [])
           .map((p: any) => p.texto?.split('\n').find((l: string) => l.trim().length > 0)?.trim())
           .filter(Boolean) as string[]
 
+        // Posts publicados recentes de TODOS os temas — evita repetir vocabulário e estrutura
+        const { data: postsPublicados } = await supabase
+          .from('posts').select('texto, tema_nome')
+          .eq('status', 'publicado')
+          .order('publicado_em', { ascending: false }).limit(12)
+        const postsRecentes = (postsPublicados ?? [])
+          .map((p: any) => ({
+            tema: p.tema_nome as string,
+            trecho: (p.texto as string)?.slice(0, 350)?.trim() ?? '',
+          }))
+          .filter(p => p.trecho.length > 50)
+
         const fontes = await buscarTema(tema.nome, tema.objetivo)
         const exemplos = exemplosPorTema[tema.id] ?? []
-        const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, exemplos, angulosRecentes)
+        const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, exemplos, angulosRecentes, postsRecentes)
         const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
         const { error } = await supabase.from('posts').insert({
@@ -249,17 +264,32 @@ export async function gerarUmPorTema(): Promise<{
     try {
       console.log(`[gerarUmPorTema] Tema: ${tema.nome}`)
       const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      const { data: postsDoMes } = await supabase
-        .from('posts').select('texto').eq('tema_id', tema.id)
+
+      // Ganchos recentes do mesmo tema — evita repetir abertura
+      const { data: postsDoTema } = await supabase
+        .from('posts').select('texto')
+        .eq('tema_id', tema.id)
         .gte('created_at', trintaDiasAtras.toISOString())
-        .in('status', ['pendente', 'aprovado', 'agendado', 'publicado'])
-        .order('created_at', { ascending: false }).limit(20)
-      const angulosRecentes = (postsDoMes ?? [])
+        .in('status', ['aprovado', 'agendado', 'publicado'])
+        .order('created_at', { ascending: false }).limit(8)
+      const angulosRecentes = (postsDoTema ?? [])
         .map((p: any) => p.texto?.split('\n').find((l: string) => l.trim().length > 0)?.trim())
         .filter(Boolean) as string[]
 
+      // Posts publicados recentes de TODOS os temas — evita repetir vocabulário e estrutura
+      const { data: postsPublicados } = await supabase
+        .from('posts').select('texto, tema_nome')
+        .eq('status', 'publicado')
+        .order('publicado_em', { ascending: false }).limit(12)
+      const postsRecentes = (postsPublicados ?? [])
+        .map((p: any) => ({
+          tema: p.tema_nome as string,
+          trecho: (p.texto as string)?.slice(0, 350)?.trim() ?? '',
+        }))
+        .filter(p => p.trecho.length > 50)
+
       const fontes = await buscarTema(tema.nome, tema.objetivo)
-      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [], angulosRecentes)
+      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [], angulosRecentes, postsRecentes)
       const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
       const { error } = await supabase.from('posts').insert({

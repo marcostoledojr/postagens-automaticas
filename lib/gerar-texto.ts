@@ -29,12 +29,18 @@ type ExemploPost = {
   score: number
 }
 
+type PostRecente = {
+  tema: string
+  trecho: string  // primeiros 350 chars do texto publicado
+}
+
 export async function gerarTextoPost(
   tema: Tema,
   fontes: FontePesquisa[],
   instrucaoBase: string,
   exemplosAltoDesempenho: ExemploPost[] = [],
-  angulosRecentes: string[] = []   // ganchos/ângulos já usados no mês — não repetir
+  angulosRecentes: string[] = [],   // ganchos/ângulos já usados no mês — não repetir
+  postsRecentes: PostRecente[] = [] // posts publicados recentes de todos os temas
 ): Promise<PostGerado> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
@@ -46,7 +52,7 @@ export async function gerarTextoPost(
     timeZone: 'America/Sao_Paulo',
   })
   const promptSistema = construirPromptSistema(tipoPost, exemplosAltoDesempenho, hoje)
-  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost, angulosRecentes)
+  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost, angulosRecentes, postsRecentes)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -202,7 +208,8 @@ function construirPromptUsuario(
   tema: Tema,
   fontes: FontePesquisa[],
   tipo: 'comercial' | 'autoridade',
-  angulosRecentes: string[] = []
+  angulosRecentes: string[] = [],
+  postsRecentes: PostRecente[] = []
 ): string {
   const fontesTexto = fontes.length > 0
     ? `\nINFORMAÇÕES RELEVANTES DO DIA (use como inspiração, nunca copie literalmente):\n${
@@ -217,11 +224,26 @@ function construirPromptUsuario(
 - PROIBIDO qualquer menção a serviços, clientes ou aspectos comerciais da Oficina1
 - Tom reflexivo e pessoal, Marcos fala como profissional e pensador`
 
-  // Instrução anti-repetição: lista os ângulos já usados este mês
+  // Instrução anti-repetição: lista os ângulos já usados este mês (mesmo tema)
   const antiRepeticao = angulosRecentes.length > 0
     ? `\nÂNGULOS JÁ USADOS NOS ÚLTIMOS 30 DIAS PARA ESTE TEMA — NÃO REPITA NENHUM DESTES:
 ${angulosRecentes.map((a, i) => `${i + 1}. "${a}"`).join('\n')}
 O novo post DEVE abordar um ângulo, metáfora ou situação completamente diferente dos listados acima.`
+    : ''
+
+  // Contexto de posts recentes de todos os temas — evita repetir padrões globais
+  const antiPadroes = postsRecentes.length > 0
+    ? `\nPOSTS PUBLICADOS RECENTEMENTE (TODOS OS TEMAS) — leia com atenção e NÃO repita padrões:
+${postsRecentes.slice(0, 10).map((p, i) => `${i + 1}. [${p.tema}]\n"${p.trecho}..."`).join('\n\n')}
+
+EXIGÊNCIA DE DIVERSIFICAÇÃO — o novo post NÃO PODE:
+- Começar com as mesmas palavras ou construção de nenhum dos posts acima
+- Usar as mesmas metáforas centrais (ex: se os últimos posts usaram "Ferrari", "cicatriz", "corredor" — use outra)
+- Repetir os mesmos exemplos de situação de campo (ex: "fechamento fiscal", "go-live", "licença")
+- Replicar a mesma estrutura narrativa (ex: se os últimos 3 posts seguiram "observação → problema → solução → CTA", use uma estrutura diferente como "pergunta provocadora → dado concreto → insight pessoal → convite")
+- Usar as mesmas palavras de transição ("o que tenho visto é", "tem um ponto que", "parte do trabalho")
+
+Cada post deve soar como uma conversa completamente nova — não uma variação do mesmo script.`
     : ''
 
   return `Escreva um post para o LinkedIn com o tema: "${tema.nome}"
@@ -230,6 +252,7 @@ OBJETIVO: ${tema.objetivo}
 TOM: ${tema.tom}
 ${fontesTexto}
 ${antiRepeticao}
+${antiPadroes}
 
 LEMBRETES PARA ESTE POST:
 ${lembretesTipo}
