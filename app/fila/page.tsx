@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { CheckCircle, XCircle, Edit3, RefreshCw, ChevronDown, ChevronUp, Trash2, RotateCcw, Sparkles, Send } from 'lucide-react'
+import { CheckCircle, XCircle, Edit3, RefreshCw, ChevronDown, ChevronUp, Trash2, RotateCcw, Sparkles, Send, ImageIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -63,6 +63,9 @@ export default function FilaAprovacao() {
   const [publicando, setPublicando] = useState<string | null>(null)
   const [refinando, setRefinando] = useState(false)
   const [instrucaoRefinar, setInstrucaoRefinar] = useState('')
+  const [refazendoImagem, setRefazendoImagem] = useState<string | null>(null)
+  const [mostrarRefazerImg, setMostrarRefazerImg] = useState<string | null>(null)
+  const [instrucaoImagem, setInstrucaoImagem] = useState<Record<string, string>>({})
   const [zerando, setZerando] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [diasGerar, setDiasGerar] = useState(7)
@@ -163,6 +166,32 @@ export default function FilaAprovacao() {
       body: JSON.stringify({ texto: textoEdit, editado_por_usuario: true }),
     })
     setEditando(null); await carregar(); setSalvando(null)
+  }
+
+  async function refazerImagem(id: string) {
+    setRefazendoImagem(id)
+    setMostrarRefazerImg(null)
+    try {
+      const instrucao = instrucaoImagem[id]?.trim() ?? ''
+      const res = await fetch(`/api/posts/${id}/refazer-imagem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instrucao: instrucao || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.erro ?? 'Erro ao refazer imagem')
+      // Atualiza a imagem localmente sem recarregar tudo
+      setPostsPorStatus(prev => ({
+        ...prev,
+        [tabAtiva]: prev[tabAtiva].map(p =>
+          p.id === id ? { ...p, imagem_url: data.imagem_url } : p
+        ),
+      }))
+      setInstrucaoImagem(prev => ({ ...prev, [id]: '' }))
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`)
+    }
+    setRefazendoImagem(null)
   }
 
   async function regenerar(id: string) {
@@ -432,13 +461,56 @@ export default function FilaAprovacao() {
                       <div className="flex gap-5">
                         {post.imagem_url && (
                           <div className="shrink-0">
-                            <img
-                              src={post.imagem_url}
-                              alt="Imagem do post"
-                              className="w-36 h-36 rounded-xl object-cover border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => window.open(post.imagem_url!, '_blank')}
-                              title="Clique para ampliar"
-                            />
+                            {refazendoImagem === post.id ? (
+                              <div className="w-36 h-36 rounded-xl border border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-2">
+                                <RefreshCw size={20} className="text-indigo-400 animate-spin" />
+                                <span className="text-xs text-slate-400 text-center leading-tight">Gerando imagem...</span>
+                              </div>
+                            ) : (
+                              <img
+                                src={post.imagem_url}
+                                alt="Imagem do post"
+                                className="w-36 h-36 rounded-xl object-cover border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => window.open(post.imagem_url!, '_blank')}
+                                title="Clique para ampliar"
+                              />
+                            )}
+
+                            {/* Botão Refazer Imagem */}
+                            {mostrarRefazerImg === post.id ? (
+                              <div className="mt-2 w-36">
+                                <textarea
+                                  value={instrucaoImagem[post.id] ?? ''}
+                                  onChange={e => setInstrucaoImagem(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                  placeholder="Instrução opcional: ex. ambiente externo, mais clara, pessoa ao computador..."
+                                  rows={3}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                                  autoFocus
+                                />
+                                <div className="flex gap-1 mt-1">
+                                  <button
+                                    onClick={() => refazerImagem(post.id)}
+                                    className="flex-1 text-xs bg-indigo-600 text-white px-2 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+                                  >
+                                    Gerar
+                                  </button>
+                                  <button
+                                    onClick={() => setMostrarRefazerImg(null)}
+                                    className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1.5"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setMostrarRefazerImg(post.id)}
+                                disabled={refazendoImagem === post.id}
+                                className="mt-1.5 w-36 flex items-center justify-center gap-1.5 text-xs text-slate-500 border border-slate-200 px-2 py-1.5 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                              >
+                                <ImageIcon size={11} /> Refazer imagem
+                              </button>
+                            )}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">

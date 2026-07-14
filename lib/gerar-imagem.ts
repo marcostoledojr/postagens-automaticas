@@ -100,15 +100,19 @@ function getVisualGuidance(tema: string, tipo: 'comercial' | 'autoridade'): stri
 async function gerarPromptViaClaude(
   tema: string,
   textoPost: string,
-  tipo: 'comercial' | 'autoridade'
+  tipo: 'comercial' | 'autoridade',
+  instrucaoAdicional?: string
 ): Promise<string | null> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY
   if (!anthropicKey) return null
 
   try {
     const tipoDesc = getVisualGuidance(tema, tipo)
+    const instrucaoExtra = instrucaoAdicional
+      ? `\n\nSPECIAL INSTRUCTION FROM THE USER (mandatory — incorporate this into the scene): ${instrucaoAdicional}`
+      : ''
 
-    const userMsg = `LINKEDIN POST:\n"""\n${textoPost.slice(0, 1500)}\n"""\n\nTOPIC: ${tema}\nVISUAL STYLE: ${tipoDesc}`
+    const userMsg = `LINKEDIN POST:\n"""\n${textoPost.slice(0, 1500)}\n"""\n\nTOPIC: ${tema}\nVISUAL STYLE: ${tipoDesc}${instrucaoExtra}`
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -148,7 +152,8 @@ export async function gerarImagem(
   tema: string,
   objetivo: string,
   textoPost: string,
-  tipoPost: 'comercial' | 'autoridade' = 'comercial'
+  tipoPost: 'comercial' | 'autoridade' = 'comercial',
+  instrucaoAdicional?: string
 ): Promise<ResultadoImagem> {
   const apiKey = process.env.FAL_API_KEY
   if (!apiKey) {
@@ -161,7 +166,7 @@ export async function gerarImagem(
   }
 
   // 1. Gera prompt via Claude Sonnet (director de arte) ou fallback keyword-based
-  const claudePrompt = await gerarPromptViaClaude(tema, textoPost, tipoPost)
+  const claudePrompt = await gerarPromptViaClaude(tema, textoPost, tipoPost, instrucaoAdicional)
   const prompt = claudePrompt ?? construirPromptFallback(tema, textoPost, tipoPost)
 
   try {
