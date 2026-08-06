@@ -14,7 +14,8 @@ import { buscarLeadsPerdidos } from './kommo'
 import { enviarAlertaErro } from './email'
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'Oficina1 <onboarding@resend.dev>'
-const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus ou ERP? Fale com a gente: contato@oficina1.com.br'
+const REPLY_TO = process.env.EMAIL_REPLY_TO ?? 'comercial@oficina1.com.br'
+const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus ou ERP? Fale com a gente: comercial@oficina1.com.br'
 const PIPELINE_PADRAO = 'OFICINA1'
 const STATUS_PERDIDO_PADRAO = 'Closed - lost'
 
@@ -326,6 +327,7 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
     let enviados = 0
     let comErro = 0
     const errosDetalhe: string[] = []
+    const registrosDestinatarios: { email_semanal_id: string; email: string; status: string; erro: string | null }[] = []
 
     for (const email of destinatarios) {
       try {
@@ -338,6 +340,7 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
           body: JSON.stringify({
             from: EMAIL_FROM,
             to: [email],
+            reply_to: REPLY_TO,
             subject: emailSemanal.assunto,
             html: htmlPersonalizado,
           }),
@@ -346,14 +349,21 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
         if (!res.ok) {
           comErro++
           errosDetalhe.push(`${email}: ${res.status}`)
+          registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: `HTTP ${res.status}` })
         } else {
           enviados++
+          registrosDestinatarios.push({ email_semanal_id: id, email, status: 'enviado', erro: null })
         }
         await sleep(600) // evita estourar rate limit do Resend
       } catch (err: any) {
         comErro++
         errosDetalhe.push(`${email}: ${err.message}`)
+        registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: err.message })
       }
+    }
+
+    if (registrosDestinatarios.length > 0) {
+      await supabase.from('emails_semanais_destinatarios').insert(registrosDestinatarios)
     }
 
     await supabase

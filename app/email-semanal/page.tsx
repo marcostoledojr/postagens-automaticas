@@ -44,6 +44,8 @@ export default function EmailSemanalPage() {
   const [enviando, setEnviando] = useState<string | null>(null)
   const [editando, setEditando] = useState<string | null>(null)
   const [assuntoEdit, setAssuntoEdit] = useState('')
+  const [destinatariosAbertos, setDestinatariosAbertos] = useState<string | null>(null)
+  const [destinatarios, setDestinatarios] = useState<Record<string, { email: string; status: string; erro: string | null }[]>>({})
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -83,6 +85,19 @@ export default function EmailSemanalPage() {
     })
     setEditando(null)
     await carregar()
+  }
+
+  async function verDestinatarios(id: string) {
+    if (destinatariosAbertos === id) {
+      setDestinatariosAbertos(null)
+      return
+    }
+    if (!destinatarios[id]) {
+      const res = await fetch(`/api/email-semanal/${id}/destinatarios`)
+      const data = await res.json()
+      setDestinatarios(prev => ({ ...prev, [id]: data.destinatarios ?? [] }))
+    }
+    setDestinatariosAbertos(id)
   }
 
   async function enviarAgora(id: string) {
@@ -169,8 +184,30 @@ export default function EmailSemanalPage() {
 
             {email.status === 'enviado' && (
               <div className="p-4 text-sm text-slate-600 border-t border-slate-100">
-                Enviado para {email.destinatarios_enviados} de {email.destinatarios_total} destinatários
-                {email.destinatarios_erro > 0 && ` (${email.destinatarios_erro} falharam)`}.
+                <div className="flex items-center justify-between">
+                  <span>
+                    Enviado para {email.destinatarios_enviados} de {email.destinatarios_total} destinatários
+                    {email.destinatarios_erro > 0 && ` (${email.destinatarios_erro} falharam)`}.
+                  </span>
+                  <button onClick={() => verDestinatarios(email.id)} className="text-blue-600 text-xs font-medium shrink-0 ml-3">
+                    {destinatariosAbertos === email.id ? 'Ocultar lista' : 'Ver quem recebeu'}
+                  </button>
+                </div>
+                {destinatariosAbertos === email.id && (
+                  <div className="mt-3 max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {(destinatarios[email.id] ?? []).map((d, i) => (
+                      <div key={i} className="px-3 py-1.5 flex items-center justify-between text-xs">
+                        <span className="text-slate-700">{d.email}</span>
+                        <span className={d.status === 'enviado' ? 'text-green-600' : 'text-red-600'}>
+                          {d.status === 'enviado' ? 'Enviado' : `Erro: ${d.erro ?? ''}`}
+                        </span>
+                      </div>
+                    ))}
+                    {(destinatarios[email.id] ?? []).length === 0 && (
+                      <p className="px-3 py-2 text-xs text-slate-400">Nenhum registro encontrado.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
