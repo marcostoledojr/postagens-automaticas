@@ -2,6 +2,9 @@
  * GET /api/email-semanal/limpar-teste?chave=SEU_CRON_SECRET&emails=a@x.com,b@y.com
  * Rota de manutenção pontual — exclui leads de teste do Kommo pelo email,
  * dentro do funil/etapa configurados (Closed - lost). Protegida pelo CRON_SECRET.
+ *
+ * A API v4 do Kommo não aceita DELETE /leads/{id} (retorna 405) — exclusão
+ * é feita em lote via DELETE /leads com um array de {id} no corpo.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
@@ -39,21 +42,24 @@ export async function GET(req: NextRequest) {
 
     const apiUrl = process.env.KOMMO_API_URL
     const token = process.env.KOMMO_LONG_LIVED_TOKEN
-    const resultados: any[] = []
 
-    for (const lead of alvo) {
-      try {
-        const res = await fetch(`${apiUrl}/leads/${lead.leadId}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        resultados.push({ leadId: lead.leadId, nome: lead.leadNome, email: lead.email, excluido: res.ok, status_http: res.status })
-      } catch (err: any) {
-        resultados.push({ leadId: lead.leadId, nome: lead.leadNome, email: lead.email, excluido: false, erro: err.message })
-      }
-    }
+    const res = await fetch(`${apiUrl}/leads`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(alvo.map(l => ({ id: l.leadId }))),
+    })
 
-    return NextResponse.json({ ok: true, resultados })
+    const corpoResposta = await res.text()
+
+    return NextResponse.json({
+      ok: res.ok,
+      status_http: res.status,
+      tentativa: alvo.map(l => ({ leadId: l.leadId, nome: l.leadNome, email: l.email })),
+      resposta_kommo: corpoResposta,
+    })
   } catch (err: any) {
     return NextResponse.json({ ok: false, erro: err.message }, { status: 500 })
   }
