@@ -2,13 +2,14 @@
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Clock, Tags, Calendar, BarChart2,
-  Linkedin, Zap, PenLine, ImageIcon
+  Linkedin, Zap, PenLine, ImageIcon, Mail
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const nav = [
   { href: '/',             label: 'Dashboard',          icon: LayoutDashboard },
   { href: '/fila',         label: 'Fila de Aprovação',  icon: Clock },
+  { href: '/email-semanal', label: 'Email Semanal',       icon: Mail },
   { href: '/novo-post',    label: 'Novo Post',           icon: PenLine },
   { href: '/temas',        label: 'Temas',               icon: Tags },
   { href: '/calendario',   label: 'Calendário',          icon: Calendar },

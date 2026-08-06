@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { gerarPostsParaAmanha, gerarResumoSemanal } from '@/lib/motor-geracao'
+import { gerarEmailSemanal, enviarEmailSemanalDaSemana } from '@/lib/email-semanal'
 import { publicarPostLinkedIn } from '@/lib/linkedin'
 import { coletarMetricasRecentes } from '@/lib/metricas'
 import { enviarAlertaErro } from '@/lib/email'
@@ -61,6 +62,20 @@ export async function GET(req: NextRequest) {
         console.error('[CRON] Erro no resumo semanal:', err)
         await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: err.message })
       }
+
+      // Sexta: gera o rascunho do email semanal para leads perdidos (Kommo) — precisa de aprovação manual
+      console.log('[CRON] Sexta — gerando rascunho do email semanal (leads perdidos)...')
+      try {
+        const resultadoEmail = await gerarEmailSemanal()
+        resultados.emailSemanal = resultadoEmail
+        if (!resultadoEmail.gerado && resultadoEmail.erro) {
+          await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: resultadoEmail.erro })
+        }
+      } catch (err: any) {
+        resultados.emailSemanal = { erro: err.message }
+        console.error('[CRON] Erro no email semanal:', err)
+        await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: err.message })
+      }
     }
 
     // Coleta métricas junto com a geração (uma vez por dia)
@@ -72,6 +87,22 @@ export async function GET(req: NextRequest) {
     } catch (err: any) {
       resultados.metricas = { erro: err.message }
       console.error('[CRON] Erro ao coletar métricas:', err)
+    }
+  }
+
+  // === TAREFA 1B: Envio do email semanal (sábado, 11h UTC / 8h BRT — só dispara se estiver aprovado) ===
+  if (hora === 11 && diaSemana === 6) {
+    console.log('[CRON] Sábado — verificando email semanal aprovado para envio...')
+    try {
+      const resultadoEnvio = await enviarEmailSemanalDaSemana()
+      resultados.envioEmailSemanal = resultadoEnvio
+      if (!resultadoEnvio.enviado && resultadoEnvio.erro && resultadoEnvio.erro !== 'Nenhum email semanal encontrado para essa semana') {
+        await enviarAlertaErro({ fluxo: 'Envio Email Semanal', erro: resultadoEnvio.erro })
+      }
+    } catch (err: any) {
+      resultados.envioEmailSemanal = { erro: err.message }
+      console.error('[CRON] Erro no envio do email semanal:', err)
+      await enviarAlertaErro({ fluxo: 'Envio Email Semanal', erro: err.message })
     }
   }
 
