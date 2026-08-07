@@ -393,6 +393,44 @@ export async function reconstruirHtmlEmailSemanal(id: string): Promise<{ ok: boo
   }
 }
 
+export async function enviarEmailSemanalDeTeste(id: string, emailDestino: string): Promise<{ enviado: boolean; erro?: string }> {
+  const supabase = createClient()
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) return { enviado: false, erro: 'RESEND_API_KEY não configurada' }
+
+  await reconstruirHtmlEmailSemanal(id)
+
+  const { data: emailSemanal, error: fetchError } = await supabase
+    .from('emails_semanais')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !emailSemanal) return { enviado: false, erro: 'Email semanal não encontrado' }
+
+  const unsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/email-semanal/optout?email=${encodeURIComponent(emailDestino)}`
+  const htmlPersonalizado = emailSemanal.corpo_html.replaceAll('{{UNSUB_URL}}', unsubUrl)
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [emailDestino],
+      reply_to: REPLY_TO,
+      subject: `[TESTE] ${emailSemanal.assunto}`,
+      html: htmlPersonalizado,
+    }),
+  })
+
+  if (!res.ok) {
+    const corpo = await res.text()
+    return { enviado: false, erro: `Resend ${res.status}: ${corpo}` }
+  }
+
+  return { enviado: true }
+}
+
 export async function enviarEmailSemanalPorId(id: string): Promise<{
   enviado: boolean
   erro?: string

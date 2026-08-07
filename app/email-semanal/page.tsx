@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { CheckCircle, RefreshCw, Send, Mail, Edit3, XCircle, RotateCcw } from 'lucide-react'
+import { CheckCircle, RefreshCw, Send, Mail, Edit3, XCircle, RotateCcw, TestTube2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -47,6 +47,7 @@ export default function EmailSemanalPage() {
   const [aprovando, setAprovando] = useState<string | null>(null)
   const [rejeitando, setRejeitando] = useState<string | null>(null)
   const [enviando, setEnviando] = useState<string | null>(null)
+  const [enviandoTeste, setEnviandoTeste] = useState<string | null>(null)
   const [editando, setEditando] = useState<string | null>(null)
   const [assuntoEdit, setAssuntoEdit] = useState('')
   const [aberturaEdit, setAberturaEdit] = useState('')
@@ -123,6 +124,18 @@ export default function EmailSemanalPage() {
     setSalvando(false)
     setEditando(null)
     await carregar()
+  }
+
+  async function enviarTeste(id: string) {
+    setEnviandoTeste(id)
+    const res = await fetch(`/api/email-semanal/${id}/teste`, { method: 'POST' })
+    const data = await res.json()
+    if (data.ok) {
+      alert(`Teste enviado para ${data.email}`)
+    } else {
+      alert(data.erro ?? 'Erro ao enviar teste')
+    }
+    setEnviandoTeste(null)
   }
 
   async function verDestinatarios(id: string) {
@@ -297,6 +310,16 @@ export default function EmailSemanalPage() {
                     title="Enviar agora, sem esperar o sábado"
                   >
                     <Send size={16} /> Enviar agora
+                  </button>
+                )}
+                {(email.status === 'pendente' || email.status === 'aprovado') && (
+                  <button
+                    onClick={() => enviarTeste(email.id)}
+                    disabled={enviandoTeste === email.id}
+                    className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                    title="Manda uma cópia [TESTE] só pra marcos.toledo@oficina1.com.br"
+                  >
+                    <TestTube2 size={16} /> Enviar teste pra mim
                   </button>
                 )}
                 <button
