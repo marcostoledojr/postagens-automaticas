@@ -1,11 +1,23 @@
 {
   "functions": {
-    "app/api/gerar/route.ts":          { "maxDuration": 60 },
-    "app/api/cron/route.ts":           { "maxDuration": 60 },
-    "app/api/posts/avulso/route.ts":   { "maxDuration": 60 },
-    "app/api/posts/[id]/publicar/route.ts": { "maxDuration": 60 },
-    "app/api/posts/[id]/refinar/route.ts":   { "maxDuration": 60 },
-    "app/api/teste-imagem/route.ts":   { "maxDuration": 60 }
+    "app/api/gerar/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/posts/avulso/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/posts/[id]/publicar/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/posts/[id]/refinar/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/teste-imagem/route.ts": {
+      "maxDuration": 60
+    }
   },
   "crons": [
     {
@@ -19,6 +31,10 @@
     {
       "path": "/api/cron",
       "schedule": "0 16 * * 1-5"
+    },
+    {
+      "path": "/api/cron",
+      "schedule": "0 12 * * 5"
     }
   ]
 }

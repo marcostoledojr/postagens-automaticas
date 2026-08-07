@@ -2,10 +2,15 @@
  * Endpoint do Cron Job - executado automaticamente pelo Vercel Cron
  * Horários (UTC → BRT):
  *   10:00 UTC = 07:00 BRT → Geração de posts (Seg-Sex)
- *   11:00 UTC = 08:00 BRT → Publicação manhã (Seg-Sáb)
+ *   11:00 UTC = 08:00 BRT → Publicação manhã (Seg-Sáb) + Envio do email semanal (só Sáb)
+ *   12:00 UTC = 09:00 BRT → Resumo semanal (LinkedIn) + rascunho do Email Semanal (só Sex)
  *   16:00 UTC = 13:00 BRT → Publicação tarde (Seg-Sex)
  *
  * Obs: Plano Hobby tem janela flexível de até 1h — crons podem disparar com atraso.
+ * O resumo semanal e o email semanal saíram do horário de geração de posts (10h)
+ * porque a geração diária já é pesada (imagem + busca + texto) e pode consumir
+ * o limite de 60s da função antes de chegar nessas tarefas extras — por isso
+ * rodam num horário próprio, mais leve.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -48,36 +53,6 @@ export async function GET(req: NextRequest) {
       await enviarAlertaErro({ fluxo: 'Geração de Posts', erro: err.message })
     }
 
-    // Sexta: também gera o resumo semanal (agendado para sábado às 11h UTC / 8h BRT)
-    if (diaSemana === 5) {
-      console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
-      try {
-        const resultado = await gerarResumoSemanal()
-        resultados.resumoSemanal = resultado
-        if (!resultado.gerado && resultado.erro) {
-          await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: resultado.erro })
-        }
-      } catch (err: any) {
-        resultados.resumoSemanal = { erro: err.message }
-        console.error('[CRON] Erro no resumo semanal:', err)
-        await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: err.message })
-      }
-
-      // Sexta: gera o rascunho do email semanal para leads perdidos (Kommo) — precisa de aprovação manual
-      console.log('[CRON] Sexta — gerando rascunho do email semanal (leads perdidos)...')
-      try {
-        const resultadoEmail = await gerarEmailSemanal()
-        resultados.emailSemanal = resultadoEmail
-        if (!resultadoEmail.gerado && resultadoEmail.erro) {
-          await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: resultadoEmail.erro })
-        }
-      } catch (err: any) {
-        resultados.emailSemanal = { erro: err.message }
-        console.error('[CRON] Erro no email semanal:', err)
-        await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: err.message })
-      }
-    }
-
     // Coleta métricas junto com a geração (uma vez por dia)
     // Schedule inteligente: diário nos primeiros 7 dias, semanal até 30 dias
     console.log('[CRON] Coletando métricas de engajamento...')
@@ -90,7 +65,37 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // === TAREFA 1B: Envio do email semanal (sábado, 11h UTC / 8h BRT — só dispara se estiver aprovado) ===
+  // === TAREFA 1A: Resumo semanal (LinkedIn) + rascunho do Email Semanal (sexta, 12h UTC / 9h BRT) ===
+  // Separado da geração diária de posts (10h) para não competir pelo limite de 60s do cron.
+  if (hora === 12 && diaSemana === 5) {
+    console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
+    try {
+      const resultado = await gerarResumoSemanal()
+      resultados.resumoSemanal = resultado
+      if (!resultado.gerado && resultado.erro) {
+        await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: resultado.erro })
+      }
+    } catch (err: any) {
+      resultados.resumoSemanal = { erro: err.message }
+      console.error('[CRON] Erro no resumo semanal:', err)
+      await enviarAlertaErro({ fluxo: 'Geração Resumo Semanal', erro: err.message })
+    }
+
+    console.log('[CRON] Sexta — gerando rascunho do email semanal (leads perdidos)...')
+    try {
+      const resultadoEmail = await gerarEmailSemanal()
+      resultados.emailSemanal = resultadoEmail
+      if (!resultadoEmail.gerado && resultadoEmail.erro) {
+        await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: resultadoEmail.erro })
+      }
+    } catch (err: any) {
+      resultados.emailSemanal = { erro: err.message }
+      console.error('[CRON] Erro no email semanal:', err)
+      await enviarAlertaErro({ fluxo: 'Geração Email Semanal', erro: err.message })
+    }
+  }
+
+    // === TAREFA 1B: Envio do email semanal (sábado, 11h UTC / 8h BRT — só dispara se estiver aprovado) ===
   if (hora === 11 && diaSemana === 6) {
     console.log('[CRON] Sábado — verificando email semanal aprovado para envio...')
     try {

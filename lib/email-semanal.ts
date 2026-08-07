@@ -5,8 +5,8 @@
  *  1. Sexta (cron): gerarEmailSemanal() monta o rascunho a partir dos posts
  *     aprovados/agendados/publicados da semana e salva com status 'pendente'.
  *  2. Marcos aprova (ou edita e aprova) na tela de revisão.
- *  3. Sábado (cron): enviarEmailSemanalDaSemana() busca o rascunho aprovado
- *     da semana, puxa os leads "perdido" no Kommo e dispara via Resend.
+ *  3. Sábado (cron): enviarEmailSemanalDaSemana() re-resolve os links dos
+ *     posts no LinkedIn (podem não existir ainda na sexta) e dispara via Resend.
  */
 
 import { createClient } from './supabase-server'
@@ -15,9 +15,21 @@ import { enviarAlertaErro } from './email'
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'Oficina1 <onboarding@resend.dev>'
 const REPLY_TO = process.env.EMAIL_REPLY_TO ?? 'comercial@oficina1.com.br'
-const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus ou ERP? Fale com a gente: comercial@oficina1.com.br'
+const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus ou ERP? Fale com a gente.'
+const WHATSAPP = '11 97534-1388'
+const WHATSAPP_LINK = 'https://wa.me/5511975341388'
+const LINKEDIN_OFICINA1 = 'https://www.linkedin.com/company/oficina1/'
+const SITE_OFICINA1 = 'https://oficina1.com.br'
+const LOGO_URL = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/logo-oficina1.png`
 const PIPELINE_PADRAO = 'OFICINA1'
 const STATUS_PERDIDO_PADRAO = 'Closed - lost'
+
+type Destaque = {
+  postId: string
+  tema: string
+  gancho: string
+  resumo: string
+}
 
 // ─── Helpers de data (mesma lógica do resumo semanal do LinkedIn) ──────────
 
@@ -45,6 +57,11 @@ async function buscarConfig(chave: string, padrao: string): Promise<string> {
   return typeof data.valor === 'string' ? data.valor : padrao
 }
 
+function linkDoPostLinkedIn(linkedinPostId: string | null): string | null {
+  if (!linkedinPostId) return null
+  return `https://www.linkedin.com/feed/update/${linkedinPostId}/`
+}
+
 // ─── Geração do rascunho (sexta) ────────────────────────────────────────────
 
 export async function gerarEmailSemanal(): Promise<{ gerado: boolean; erro?: string; id?: string }> {
@@ -64,7 +81,7 @@ export async function gerarEmailSemanal(): Promise<{ gerado: boolean; erro?: str
 
   const { data: posts } = await supabase
     .from('posts')
-    .select('texto, tema_nome, data_agendada')
+    .select('id, texto, tema_nome, data_agendada, linkedin_post_id')
     .in('status', ['publicado', 'aprovado', 'agendado'])
     .neq('tema_nome', 'Resumo da Semana')
     .gte('data_agendada', inicio.toISOString())
@@ -82,18 +99,18 @@ export async function gerarEmailSemanal(): Promise<{ gerado: boolean; erro?: str
     return { gerado: false, erro: 'Nenhum post aprovado essa semana para montar o email' }
   }
 
-  const destaques = posts.map(p => {
-    const primeiraLinha = p.texto.split('\n').find((l: string) => l.trim())?.trim() ?? ''
-    const trecho = p.texto.split('\n').filter((l: string) => l.trim()).slice(1, 3).join(' ').trim()
-    return { tema: p.tema_nome as string, gancho: primeiraLinha, trecho: trecho.slice(0, 220) }
-  })
-
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return { gerado: false, erro: 'ANTHROPIC_API_KEY não configurada' }
 
-  const contexto = destaques.map((d, i) => `${i + 1}. [${d.tema}] "${d.gancho}"`).join('\n')
+  const contexto = posts
+    .map((p, i) => {
+      const primeiraLinha = p.texto.split('\n').find((l: string) => l.trim())?.trim() ?? ''
+      const corpo = p.texto.split('\n').filter((l: string) => l.trim()).slice(1).join(' ').trim()
+      return `${i + 1}. [${p.tema_nome}] Gancho: "${primeiraLinha}"\nTexto: ${corpo.slice(0, 500)}`
+    })
+    .join('\n\n')
 
-  const promptSistema = `Você escreve, na voz de Marcos Toledo Jr (Head Comercial da Oficina1), o texto de um email curto enviado a pessoas que já conversaram com a Oficina1 no passado mas o negócio não avançou.
+  const promptSistema = `Você escreve, na voz de Marcos Toledo Jr (Head Comercial da Oficina1), o conteúdo de um email curto enviado a pessoas que já conversaram com a Oficina1 no passado mas o negócio não avançou.
 
 REGRAS ABSOLUTAS:
 - ZERO emojis
@@ -103,16 +120,21 @@ REGRAS ABSOLUTAS:
 - Tom direto, consultivo, sem venda forçada
 - Não inclua saudação (ex: "Olá") nem assinatura — isso é montado à parte
 - Não inclua links nem CTA — isso é montado à parte
-- Responda em EXATAMENTE duas partes separadas pela linha "---", sem nenhum texto antes da primeira parte ou depois da segunda`
+- Responda em EXATAMENTE três partes separadas pela linha "---", sem nenhum texto antes da primeira parte ou depois da última`
 
-  const promptUsuario = `Essa semana a Oficina1 publicou conteúdo no LinkedIn sobre:
+  const promptUsuario = `Essa semana a Oficina1 publicou ${posts.length} posts no LinkedIn:
+
 ${contexto}
 
 Parte 1 (linha única): um assunto de email curto (máximo 60 caracteres), sem aspas, que desperte curiosidade sem parecer spam.
 
 ---
 
-Parte 2: um parágrafo curto (50-80 palavras) que serve de abertura do email. Reconhece que a conversa não avançou, sem cobrança, e convida a pessoa a dar uma olhada no que foi discutido essa semana como forma leve de manter contato.`
+Parte 2: uma frase curta de abertura (máximo 30 palavras, uma frase só). Reconhece que a conversa não avançou, sem cobrança, e diz que vai deixar abaixo o que foi publicado essa semana. Não repita o conteúdo dos posts aqui — isso vem na parte 3.
+
+---
+
+Parte 3: exatamente ${posts.length} linhas numeradas (1. 2. 3. ...), na mesma ordem dos posts acima. Cada linha é um resumo de 1 frase (máximo 25 palavras) do que aquele post específico argumenta — não copie o gancho, sintetize a ideia central com suas palavras.`
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -124,7 +146,7 @@ Parte 2: um parágrafo curto (50-80 palavras) que serve de abertura do email. Re
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 500,
+        max_tokens: 900,
         system: promptSistema,
         messages: [{ role: 'user', content: promptUsuario }],
       }),
@@ -134,12 +156,34 @@ Parte 2: um parágrafo curto (50-80 palavras) que serve de abertura do email. Re
 
     const data = await res.json()
     const textoCompleto = (data.content[0].text as string).trim()
-    const [assuntoBruto, ...resto] = textoCompleto.split('---')
-    const assunto = assuntoBruto.trim().replace(/^["']|["']$/g, '') || 'Essa semana na Oficina1'
-    const paragrafoAbertura = resto.join('---').trim()
+    const partes = textoCompleto.split('---').map(p => p.trim())
+    const assunto = (partes[0] ?? '').replace(/^["']|["']$/g, '') || 'Essa semana na Oficina1'
+    const paragrafoAbertura = partes[1] ?? ''
+    const blocoResumos = partes[2] ?? ''
+
+    const linhasResumo = blocoResumos
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .map(l => l.replace(/^\d+[.).]\s*/, ''))
+
+    const destaques: Destaque[] = posts.map((p, i) => {
+      const primeiraLinha = p.texto.split('\n').find((l: string) => l.trim())?.trim() ?? ''
+      return {
+        postId: p.id,
+        tema: p.tema_nome as string,
+        gancho: primeiraLinha,
+        resumo: linhasResumo[i] ?? primeiraLinha,
+      }
+    })
 
     const cta = await buscarConfig('email_semanal_cta', CTA_PADRAO)
-    const { html, texto } = montarHtmlEmail({ paragrafoAbertura, destaques, cta })
+    const { html, texto } = montarHtmlEmail({
+      paragrafoAbertura,
+      destaques,
+      cta,
+      linksPostId: Object.fromEntries(posts.map(p => [p.id, p.linkedin_post_id])),
+    })
 
     const { data: inserido, error } = await supabase
       .from('emails_semanais')
@@ -147,6 +191,7 @@ Parte 2: um parágrafo curto (50-80 palavras) que serve de abertura do email. Re
         semana_inicio: formatarDataISO(inicio),
         semana_fim: formatarDataISO(fim),
         assunto,
+        paragrafo_abertura: paragrafoAbertura,
         corpo_html: html,
         corpo_texto: texto,
         posts_incluidos: destaques,
@@ -170,22 +215,29 @@ function montarHtmlEmail({
   paragrafoAbertura,
   destaques,
   cta,
+  linksPostId,
 }: {
   paragrafoAbertura: string
-  destaques: { tema: string; gancho: string; trecho: string }[]
+  destaques: Destaque[]
   cta: string
+  linksPostId: Record<string, string | null>
 }): { html: string; texto: string } {
   const blocosDestaque = destaques
-    .map(
-      d => `
+    .map(d => {
+      const link = linkDoPostLinkedIn(linksPostId[d.postId] ?? null)
+      const linkHtml = link
+        ? `<a href="${link}" style="display:inline-block;margin-top:8px;font-size:13px;color:#3b82f6;text-decoration:none;font-weight:600;">Ver post completo →</a>`
+        : ''
+      return `
         <tr>
           <td style="padding:14px 0;border-top:1px solid #e2e8f0;">
             <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#3b82f6;text-transform:uppercase;letter-spacing:.04em;">${escaparHtml(d.tema)}</p>
             <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0f172a;">${escaparHtml(d.gancho)}</p>
-            <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">${escaparHtml(d.trecho)}</p>
+            <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">${escaparHtml(d.resumo)}</p>
+            ${linkHtml}
           </td>
         </tr>`
-    )
+    })
     .join('')
 
   const html = `<!DOCTYPE html>
@@ -196,8 +248,8 @@ function montarHtmlEmail({
       <td align="center">
         <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
           <tr>
-            <td style="background:#0f172a;padding:20px 28px;">
-              <p style="margin:0;color:#ffffff;font-size:16px;font-weight:700;">Oficina1</p>
+            <td style="background:#ffffff;padding:24px 28px;border-bottom:1px solid #e2e8f0;">
+              <img src="${LOGO_URL}" alt="Oficina1" width="140" style="display:block;height:auto;" />
             </td>
           </tr>
           <tr>
@@ -208,7 +260,13 @@ function montarHtmlEmail({
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                 <tr>
                   <td style="background:#eff6ff;border-radius:6px;padding:18px 20px;">
-                    <p style="margin:0;font-size:14px;color:#1e3a8a;line-height:1.6;">${escaparHtml(cta)}</p>
+                    <p style="margin:0 0 10px;font-size:14px;color:#1e3a8a;line-height:1.6;">${escaparHtml(cta)}</p>
+                    <p style="margin:0;font-size:13px;color:#1e3a8a;line-height:1.8;">
+                      WhatsApp: <a href="${WHATSAPP_LINK}" style="color:#1e3a8a;font-weight:600;">${WHATSAPP}</a><br/>
+                      Email: <a href="mailto:${REPLY_TO}" style="color:#1e3a8a;font-weight:600;">${REPLY_TO}</a><br/>
+                      LinkedIn: <a href="${LINKEDIN_OFICINA1}" style="color:#1e3a8a;font-weight:600;">linkedin.com/company/oficina1</a><br/>
+                      Site: <a href="${SITE_OFICINA1}" style="color:#1e3a8a;font-weight:600;">oficina1.com.br</a>
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -234,9 +292,13 @@ function montarHtmlEmail({
     '',
     paragrafoAbertura,
     '',
-    ...destaques.map(d => `${d.tema}: ${d.gancho}\n${d.trecho}`),
+    ...destaques.map(d => {
+      const link = linkDoPostLinkedIn(linksPostId[d.postId] ?? null)
+      return `${d.tema}: ${d.gancho}\n${d.resumo}${link ? `\n${link}` : ''}`
+    }),
     '',
     cta,
+    `WhatsApp: ${WHATSAPP} | Email: ${REPLY_TO} | ${LINKEDIN_OFICINA1} | ${SITE_OFICINA1}`,
     '',
     'Para não receber mais: {{UNSUB_URL}}',
   ].join('\n')
@@ -282,6 +344,55 @@ export async function enviarEmailSemanalDaSemana(): Promise<{
   return enviarEmailSemanalPorId(emailSemanal.id)
 }
 
+/**
+ * Reconstrói o HTML/texto de um email semanal a partir do que está salvo
+ * (parágrafo de abertura + destaques), resolvendo os links do LinkedIn com
+ * os dados mais atuais dos posts. Usado no envio (sábado) e sempre que o
+ * parágrafo de abertura é editado manualmente.
+ */
+export async function reconstruirHtmlEmailSemanal(id: string): Promise<{ ok: boolean; erro?: string }> {
+  const supabase = createClient()
+  const { data: emailSemanal, error: fetchError } = await supabase
+    .from('emails_semanais')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !emailSemanal) return { ok: false, erro: 'Email semanal não encontrado' }
+
+  const destaques = (emailSemanal.posts_incluidos ?? []) as Destaque[]
+  if (destaques.length === 0 || !destaques[0]?.postId) return { ok: true }
+
+  try {
+    const postIds = destaques.map(d => d.postId)
+    const { data: postsAtuais } = await supabase
+      .from('posts')
+      .select('id, linkedin_post_id')
+      .in('id', postIds)
+
+    const linksPostId = Object.fromEntries(
+      (postsAtuais ?? []).map(p => [p.id, p.linkedin_post_id])
+    )
+
+    const cta = await buscarConfig('email_semanal_cta', CTA_PADRAO)
+    const refeito = montarHtmlEmail({
+      paragrafoAbertura: emailSemanal.paragrafo_abertura ?? '',
+      destaques,
+      cta,
+      linksPostId,
+    })
+
+    await supabase
+      .from('emails_semanais')
+      .update({ corpo_html: refeito.html, corpo_texto: refeito.texto, atualizado_em: new Date().toISOString() })
+      .eq('id', id)
+
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, erro: err.message }
+  }
+}
+
 export async function enviarEmailSemanalPorId(id: string): Promise<{
   enviado: boolean
   erro?: string
@@ -291,18 +402,26 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return { enviado: false, erro: 'RESEND_API_KEY não configurada' }
 
-  const { data: emailSemanal, error: fetchError } = await supabase
+  const { data: emailSemanalInicial, error: fetchError } = await supabase
     .from('emails_semanais')
     .select('*')
     .eq('id', id)
     .single()
 
-  if (fetchError || !emailSemanal) return { enviado: false, erro: 'Email semanal não encontrado' }
-  if (emailSemanal.status !== 'aprovado') {
-    return { enviado: false, erro: `Email precisa estar aprovado (status atual: ${emailSemanal.status})` }
+  if (fetchError || !emailSemanalInicial) return { enviado: false, erro: 'Email semanal não encontrado' }
+  if (emailSemanalInicial.status !== 'aprovado') {
+    return { enviado: false, erro: `Email precisa estar aprovado (status atual: ${emailSemanalInicial.status})` }
   }
 
   try {
+    // Re-resolve os links dos posts no LinkedIn — na sexta (geração) alguns
+    // posts da semana ainda podem não ter sido publicados, então refazemos
+    // o HTML agora com os linkedin_post_id mais atuais antes de enviar.
+    await reconstruirHtmlEmailSemanal(id)
+
+    const { data: emailSemanal } = await supabase.from('emails_semanais').select('*').eq('id', id).single()
+    const corpoHtml = emailSemanal.corpo_html
+
     const nomePipeline = await buscarConfig('kommo_pipeline_nome', PIPELINE_PADRAO)
     const nomeStatus = await buscarConfig('kommo_status_perdido_nome', STATUS_PERDIDO_PADRAO)
 
@@ -332,7 +451,7 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
     for (const email of destinatarios) {
       try {
         const unsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/email-semanal/optout?email=${encodeURIComponent(email)}`
-        const htmlPersonalizado = emailSemanal.corpo_html.replaceAll('{{UNSUB_URL}}', unsubUrl)
+        const htmlPersonalizado = corpoHtml.replaceAll('{{UNSUB_URL}}', unsubUrl)
 
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',

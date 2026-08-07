@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { CheckCircle, RefreshCw, Send, Mail, Edit3 } from 'lucide-react'
+import { CheckCircle, RefreshCw, Send, Mail, Edit3, XCircle, RotateCcw } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -9,6 +9,7 @@ type EmailSemanal = {
   semana_inicio: string
   semana_fim: string
   assunto: string
+  paragrafo_abertura: string | null
   corpo_html: string
   status: string
   destinatarios_total: number
@@ -25,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   aprovado: 'Aprovado — envia sábado',
   enviado: 'Enviado',
   erro: 'Erro',
+  rejeitado: 'Rejeitado',
   sem_conteudo: 'Sem conteúdo essa semana',
 }
 
@@ -33,6 +35,7 @@ const STATUS_COR: Record<string, string> = {
   aprovado: 'bg-green-100 text-green-700',
   enviado: 'bg-slate-100 text-slate-600',
   erro: 'bg-red-100 text-red-600',
+  rejeitado: 'bg-red-100 text-red-600',
   sem_conteudo: 'bg-slate-100 text-slate-500',
 }
 
@@ -40,10 +43,14 @@ export default function EmailSemanalPage() {
   const [emails, setEmails] = useState<EmailSemanal[]>([])
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
+  const [regenerando, setRegenerando] = useState<string | null>(null)
   const [aprovando, setAprovando] = useState<string | null>(null)
+  const [rejeitando, setRejeitando] = useState<string | null>(null)
   const [enviando, setEnviando] = useState<string | null>(null)
   const [editando, setEditando] = useState<string | null>(null)
   const [assuntoEdit, setAssuntoEdit] = useState('')
+  const [aberturaEdit, setAberturaEdit] = useState('')
+  const [salvando, setSalvando] = useState(false)
   const [destinatariosAbertos, setDestinatariosAbertos] = useState<string | null>(null)
   const [destinatarios, setDestinatarios] = useState<Record<string, { email: string; status: string; erro: string | null }[]>>({})
 
@@ -66,6 +73,17 @@ export default function EmailSemanalPage() {
     setGerando(false)
   }
 
+  async function regerar(id: string) {
+    if (!confirm('Isso apaga o rascunho atual dessa semana e gera um novo do zero. Continuar?')) return
+    setRegenerando(id)
+    await fetch(`/api/email-semanal/${id}`, { method: 'DELETE' })
+    const res = await fetch('/api/email-semanal/gerar', { method: 'POST' })
+    const data = await res.json()
+    if (!data.ok) alert(data.erro ?? 'Erro ao regerar')
+    await carregar()
+    setRegenerando(null)
+  }
+
   async function aprovar(id: string) {
     setAprovando(id)
     await fetch(`/api/email-semanal/${id}`, {
@@ -77,12 +95,32 @@ export default function EmailSemanalPage() {
     setAprovando(null)
   }
 
-  async function salvarAssunto(id: string) {
+  async function rejeitar(id: string) {
+    if (!confirm('Rejeitar esse rascunho? Ele não será enviado sábado.')) return
+    setRejeitando(id)
     await fetch(`/api/email-semanal/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assunto: assuntoEdit }),
+      body: JSON.stringify({ status: 'rejeitado' }),
     })
+    await carregar()
+    setRejeitando(null)
+  }
+
+  function abrirEdicao(email: EmailSemanal) {
+    setEditando(email.id)
+    setAssuntoEdit(email.assunto)
+    setAberturaEdit(email.paragrafo_abertura ?? '')
+  }
+
+  async function salvarEdicao(id: string) {
+    setSalvando(true)
+    await fetch(`/api/email-semanal/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assunto: assuntoEdit, paragrafo_abertura: aberturaEdit }),
+    })
+    setSalvando(false)
     setEditando(null)
     await carregar()
   }
@@ -140,34 +178,48 @@ export default function EmailSemanalPage() {
         {emails.map(email => (
           <div key={email.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="p-4 flex items-center justify-between border-b border-slate-100">
-              <div>
+              <div className="flex-1">
                 <p className="text-xs text-slate-500">
                   Semana de {format(parseISO(email.semana_inicio), "dd 'de' MMM", { locale: ptBR })} a {format(parseISO(email.semana_fim), "dd 'de' MMM", { locale: ptBR })}
                 </p>
                 {editando === email.id ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      value={assuntoEdit}
-                      onChange={e => setAssuntoEdit(e.target.value)}
-                      className="border border-slate-300 rounded px-2 py-1 text-sm w-72"
-                    />
-                    <button onClick={() => salvarAssunto(email.id)} className="text-xs text-blue-600 font-medium">Salvar</button>
+                  <div className="mt-2 space-y-2">
+                    <div>
+                      <label className="text-xs text-slate-500">Assunto</label>
+                      <input
+                        value={assuntoEdit}
+                        onChange={e => setAssuntoEdit(e.target.value)}
+                        className="border border-slate-300 rounded px-2 py-1 text-sm w-full mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">Parágrafo de abertura</label>
+                      <textarea
+                        value={aberturaEdit}
+                        onChange={e => setAberturaEdit(e.target.value)}
+                        rows={3}
+                        className="border border-slate-300 rounded px-2 py-1 text-sm w-full mt-0.5"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => salvarEdicao(email.id)} disabled={salvando} className="text-xs text-blue-600 font-medium disabled:opacity-50">
+                        {salvando ? 'Salvando...' : 'Salvar'}
+                      </button>
+                      <button onClick={() => setEditando(null)} className="text-xs text-slate-500">Cancelar</button>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-slate-900">{email.assunto}</p>
                     {email.status === 'pendente' && (
-                      <button
-                        onClick={() => { setEditando(email.id); setAssuntoEdit(email.assunto) }}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
+                      <button onClick={() => abrirEdicao(email)} className="text-slate-400 hover:text-slate-700">
                         <Edit3 size={14} />
                       </button>
                     )}
                   </div>
                 )}
               </div>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COR[email.status] ?? 'bg-slate-100 text-slate-600'}`}>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3 ${STATUS_COR[email.status] ?? 'bg-slate-100 text-slate-600'}`}>
                 {STATUS_LABEL[email.status] ?? email.status}
               </span>
             </div>
@@ -217,24 +269,42 @@ export default function EmailSemanalPage() {
               </div>
             )}
 
-            {(email.status === 'pendente' || email.status === 'aprovado') && (
+            {(email.status === 'pendente' || email.status === 'aprovado' || email.status === 'rejeitado') && (
               <div className="p-4 flex items-center gap-3 border-t border-slate-100">
                 {email.status === 'pendente' && (
+                  <>
+                    <button
+                      onClick={() => aprovar(email.id)}
+                      disabled={aprovando === email.id}
+                      className="flex items-center gap-2 bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <CheckCircle size={16} /> Aprovar
+                    </button>
+                    <button
+                      onClick={() => rejeitar(email.id)}
+                      disabled={rejeitando === email.id}
+                      className="flex items-center gap-2 bg-white border border-red-200 text-red-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <XCircle size={16} /> Rejeitar
+                    </button>
+                  </>
+                )}
+                {email.status === 'aprovado' && (
                   <button
-                    onClick={() => aprovar(email.id)}
-                    disabled={aprovando === email.id}
-                    className="flex items-center gap-2 bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    onClick={() => enviarAgora(email.id)}
+                    disabled={enviando === email.id}
+                    className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    title="Enviar agora, sem esperar o sábado"
                   >
-                    <CheckCircle size={16} /> Aprovar
+                    <Send size={16} /> Enviar agora
                   </button>
                 )}
                 <button
-                  onClick={() => enviarAgora(email.id)}
-                  disabled={enviando === email.id || email.status !== 'aprovado'}
-                  className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={email.status !== 'aprovado' ? 'Aprove antes de enviar' : 'Enviar agora, sem esperar o sábado'}
+                  onClick={() => regerar(email.id)}
+                  disabled={regenerando === email.id}
+                  className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <Send size={16} /> Enviar agora
+                  <RotateCcw size={16} className={regenerando === email.id ? 'animate-spin' : ''} /> Regerar
                 </button>
               </div>
             )}
