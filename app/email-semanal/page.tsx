@@ -284,23 +284,23 @@ export default function EmailSemanalPage() {
 
             {(email.status === 'pendente' || email.status === 'aprovado' || email.status === 'rejeitado') && (
               <div className="p-4 flex items-center gap-3 border-t border-slate-100">
+                {(email.status === 'pendente' || email.status === 'rejeitado') && (
+                  <button
+                    onClick={() => aprovar(email.id)}
+                    disabled={aprovando === email.id}
+                    className="flex items-center gap-2 bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  >
+                    <CheckCircle size={16} /> Aprovar
+                  </button>
+                )}
                 {email.status === 'pendente' && (
-                  <>
-                    <button
-                      onClick={() => aprovar(email.id)}
-                      disabled={aprovando === email.id}
-                      className="flex items-center gap-2 bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      <CheckCircle size={16} /> Aprovar
-                    </button>
-                    <button
-                      onClick={() => rejeitar(email.id)}
-                      disabled={rejeitando === email.id}
-                      className="flex items-center gap-2 bg-white border border-red-200 text-red-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <XCircle size={16} /> Rejeitar
-                    </button>
-                  </>
+                  <button
+                    onClick={() => rejeitar(email.id)}
+                    disabled={rejeitando === email.id}
+                    className="flex items-center gap-2 bg-white border border-red-200 text-red-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <XCircle size={16} /> Rejeitar
+                  </button>
                 )}
                 {email.status === 'aprovado' && (
                   <button
