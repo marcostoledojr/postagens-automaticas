@@ -15,7 +15,7 @@ import { enviarAlertaErro } from './email'
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'Oficina1 <onboarding@resend.dev>'
 const REPLY_TO = process.env.EMAIL_REPLY_TO ?? 'comercial@oficina1.com.br'
-const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus ou ERP? Fale com a gente.'
+const CTA_PADRAO = 'Precisando de apoio com TOTVS Protheus, fale com a gente!'
 const WHATSAPP = '11 97534-1388'
 const WHATSAPP_LINK = 'https://wa.me/5511975341388'
 const LINKEDIN_OFICINA1 = 'https://www.linkedin.com/company/oficina1/'
@@ -116,8 +116,9 @@ REGRAS ABSOLUTAS:
 - ZERO emojis
 - ZERO bullets, listas ou markdown
 - ZERO negrito ou asteriscos
+- ZERO travessão (—) ou hífen (-) no meio de frases
 - ZERO "a gente"
-- Tom direto, consultivo, sem venda forçada
+- Tom caloroso, humano, como alguém escrevendo mesmo o email — não um resumo corporativo
 - Não inclua saudação (ex: "Olá") nem assinatura — isso é montado à parte
 - Não inclua links nem CTA — isso é montado à parte
 - Responda em EXATAMENTE três partes separadas pela linha "---", sem nenhum texto antes da primeira parte ou depois da última`
@@ -130,7 +131,7 @@ Parte 1 (linha única): um assunto de email curto (máximo 60 caracteres), sem a
 
 ---
 
-Parte 2: uma frase curta de abertura (máximo 30 palavras, uma frase só). Reconhece que a conversa não avançou, sem cobrança, e diz que vai deixar abaixo o que foi publicado essa semana. Não repita o conteúdo dos posts aqui — isso vem na parte 3.
+Parte 2: um parágrafo de abertura (40 a 70 palavras) no estilo "Segue o resumo da semana Oficina1" — comece parecido com isso, depois mencione de forma fluida e humana a variedade de assuntos que apareceram essa semana (sem listar como bullet, numa frase corrida natural), e feche convidando para a leitura com entusiasmo genuíno. Não repita o conteúdo dos posts em detalhe aqui — isso vem na parte 3. Não mencione que "a conversa não avançou" nem nada sobre o relacionamento comercial anterior — o tom aqui é de compartilhar conteúdo útil, não de retomar contato.
 
 ---
 
@@ -226,12 +227,11 @@ function montarHtmlEmail({
     .map(d => {
       const link = linkDoPostLinkedIn(linksPostId[d.postId] ?? null)
       const linkHtml = link
-        ? `<a href="${link}" style="display:inline-block;margin-top:8px;font-size:13px;color:#3b82f6;text-decoration:none;font-weight:600;">Ver post completo →</a>`
+        ? `<a href="${link}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:13px;color:#3b82f6;text-decoration:none;font-weight:600;">Ver post completo →</a>`
         : ''
       return `
         <tr>
           <td style="padding:14px 0;border-top:1px solid #e2e8f0;">
-            <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#3b82f6;text-transform:uppercase;letter-spacing:.04em;">${escaparHtml(d.tema)}</p>
             <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0f172a;">${escaparHtml(d.gancho)}</p>
             <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">${escaparHtml(d.resumo)}</p>
             ${linkHtml}
@@ -260,7 +260,7 @@ function montarHtmlEmail({
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                 <tr>
                   <td style="background:#eff6ff;border-radius:6px;padding:18px 20px;">
-                    <p style="margin:0 0 10px;font-size:14px;color:#1e3a8a;line-height:1.6;">${escaparHtml(cta)}</p>
+                    <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#1e3a8a;line-height:1.6;">${escaparHtml(cta)}</p>
                     <p style="margin:0;font-size:13px;color:#1e3a8a;line-height:1.8;">
                       WhatsApp: <a href="${WHATSAPP_LINK}" style="color:#1e3a8a;font-weight:600;">${WHATSAPP}</a><br/>
                       Email: <a href="mailto:${REPLY_TO}" style="color:#1e3a8a;font-weight:600;">${REPLY_TO}</a><br/>
@@ -294,7 +294,7 @@ function montarHtmlEmail({
     '',
     ...destaques.map(d => {
       const link = linkDoPostLinkedIn(linksPostId[d.postId] ?? null)
-      return `${d.tema}: ${d.gancho}\n${d.resumo}${link ? `\n${link}` : ''}`
+      return `${d.gancho}\n${d.resumo}${link ? `\n${link}` : ''}`
     }),
     '',
     cta,
