@@ -24,6 +24,13 @@ const LOGO_URL = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/logo-oficina1.png`
 const PIPELINE_PADRAO = 'OFICINA1'
 const STATUS_PERDIDO_PADRAO = 'Closed - lost'
 
+// Destinatários internos fixos — recebem toda semana junto com os leads, pra acompanhamento interno
+const DESTINATARIOS_INTERNOS = [
+  'jaime.wikanski@oficina1.com.br',
+  'andreza.favero@oficina1.com.br',
+  'marcos.toledo@oficina1.com.br',
+]
+
 type Destaque = {
   postId: string
   tema: string
@@ -466,7 +473,10 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
     const leads = await buscarLeadsPerdidos(nomePipeline, nomeStatus)
 
     const emailsUnicos = Array.from(
-      new Set(leads.map(l => l.email).filter((e): e is string => !!e).map(e => e.toLowerCase().trim()))
+      new Set([
+        ...leads.map(l => l.email).filter((e): e is string => !!e),
+        ...DESTINATARIOS_INTERNOS,
+      ].map(e => e.toLowerCase().trim()))
     )
 
     const { data: optouts } = await supabase.from('email_optout').select('email')

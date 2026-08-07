@@ -317,7 +317,7 @@ export default function EmailSemanalPage() {
                     onClick={() => enviarTeste(email.id)}
                     disabled={enviandoTeste === email.id}
                     className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-                    title="Manda uma cópia [TESTE] só pra marcos.toledo@oficina1.com.br"
+                    title="Manda uma cópia [TESTE] só pra marcostoledojr@gmail.com (único endereço liberado até o domínio ser verificado no Resend)"
                   >
                     <TestTube2 size={16} /> Enviar teste pra mim
                   </button>
