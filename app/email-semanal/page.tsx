@@ -21,6 +21,32 @@ type EmailSemanal = {
   enviado_em: string | null
 }
 
+type StatusTab = 'pendente' | 'aprovado' | 'enviado' | 'rejeitado' | 'erro'
+
+const TABS: { status: StatusTab; label: string; emptyMsg: string }[] = [
+  { status: 'pendente',  label: 'Pendentes', emptyMsg: 'Nenhum email pendente. Clique em "Gerar rascunho agora" ou aguarde a sexta-feira.' },
+  { status: 'aprovado',  label: 'Aprovados', emptyMsg: 'Nenhum email aprovado aguardando envio.' },
+  { status: 'enviado',   label: 'Enviados',  emptyMsg: 'Nenhum email enviado ainda.' },
+  { status: 'rejeitado', label: 'Rejeitados', emptyMsg: 'Nenhum email rejeitado.' },
+  { status: 'erro',      label: 'Erros',     emptyMsg: 'Nenhum erro de envio.' },
+]
+
+const TAB_COR: Record<StatusTab, string> = {
+  pendente:  'text-blue-600 border-blue-600',
+  aprovado:  'text-green-600 border-green-600',
+  enviado:   'text-slate-600 border-slate-600',
+  rejeitado: 'text-red-600 border-red-600',
+  erro:      'text-orange-600 border-orange-600',
+}
+
+const BADGE_COR: Record<StatusTab, string> = {
+  pendente:  'bg-blue-100 text-blue-700',
+  aprovado:  'bg-green-100 text-green-700',
+  enviado:   'bg-slate-100 text-slate-600',
+  rejeitado: 'bg-red-100 text-red-600',
+  erro:      'bg-orange-100 text-orange-600',
+}
+
 const STATUS_LABEL: Record<string, string> = {
   pendente: 'Aguardando aprovação',
   aprovado: 'Aprovado — envia sábado',
@@ -30,17 +56,11 @@ const STATUS_LABEL: Record<string, string> = {
   sem_conteudo: 'Sem conteúdo essa semana',
 }
 
-const STATUS_COR: Record<string, string> = {
-  pendente: 'bg-blue-100 text-blue-700',
-  aprovado: 'bg-green-100 text-green-700',
-  enviado: 'bg-slate-100 text-slate-600',
-  erro: 'bg-red-100 text-red-600',
-  rejeitado: 'bg-red-100 text-red-600',
-  sem_conteudo: 'bg-slate-100 text-slate-500',
-}
-
 export default function EmailSemanalPage() {
-  const [emails, setEmails] = useState<EmailSemanal[]>([])
+  const [tabAtiva, setTabAtiva] = useState<StatusTab>('pendente')
+  const [emailsPorStatus, setEmailsPorStatus] = useState<Record<StatusTab, EmailSemanal[]>>({
+    pendente: [], aprovado: [], enviado: [], rejeitado: [], erro: [],
+  })
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
   const [regenerando, setRegenerando] = useState<string | null>(null)
@@ -57,9 +77,14 @@ export default function EmailSemanalPage() {
 
   const carregar = useCallback(async () => {
     setLoading(true)
-    const res = await fetch('/api/email-semanal?limit=12', { cache: 'no-store' })
-    const data = await res.json()
-    setEmails(data.emails ?? [])
+    const resultados = await Promise.all(
+      TABS.map(t => fetch(`/api/email-semanal?status=${t.status}&limit=12`, { cache: 'no-store' }).then(r => r.json()))
+    )
+    const novo: Record<StatusTab, EmailSemanal[]> = {
+      pendente: [], aprovado: [], enviado: [], rejeitado: [], erro: [],
+    }
+    TABS.forEach((t, i) => { novo[t.status] = resultados[i].emails ?? [] })
+    setEmailsPorStatus(novo)
     setLoading(false)
   }, [])
 
@@ -152,7 +177,7 @@ export default function EmailSemanalPage() {
   }
 
   async function enviarAgora(id: string) {
-    if (!confirm('Enviar agora para todos os leads perdidos no Kommo? Essa ação não pode ser desfeita.')) return
+    if (!confirm('Enviar agora para todos os leads perdidos no Kommo (+ os 3 emails internos)? Essa ação não pode ser desfeita.')) return
     setEnviando(id)
     const res = await fetch(`/api/email-semanal/${id}/enviar`, { method: 'POST' })
     const data = await res.json()
@@ -160,6 +185,9 @@ export default function EmailSemanalPage() {
     await carregar()
     setEnviando(null)
   }
+
+  const emails = emailsPorStatus[tabAtiva]
+  const tabInfo = TABS.find(t => t.status === tabAtiva)!
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -172,19 +200,45 @@ export default function EmailSemanalPage() {
             Gerado toda sexta a partir dos posts aprovados da semana. Aprove aqui para o envio de sábado acontecer sozinho.
           </p>
         </div>
-        <button
-          onClick={gerarAgora}
-          disabled={gerando}
-          className="flex items-center gap-2 bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50"
-        >
-          <RefreshCw size={16} className={gerando ? 'animate-spin' : ''} />
-          Gerar rascunho agora
-        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-4">
+          <button
+            onClick={carregar}
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium px-3 py-2 rounded-lg hover:bg-slate-50"
+          >
+            <RefreshCw size={16} /> Atualizar
+          </button>
+          <button
+            onClick={gerarAgora}
+            disabled={gerando}
+            className="flex items-center gap-2 bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={gerando ? 'animate-spin' : ''} />
+            Gerar rascunho agora
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 border-b border-slate-200 mb-4">
+        {TABS.map(t => (
+          <button
+            key={t.status}
+            onClick={() => setTabAtiva(t.status)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tabAtiva === t.status ? TAB_COR[t.status] : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+          >
+            {t.label} {emailsPorStatus[t.status].length > 0 && (
+              <span className="ml-1 text-xs opacity-70">{emailsPorStatus[t.status].length}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {loading && <p className="text-slate-500 text-sm">Carregando...</p>}
       {!loading && emails.length === 0 && (
-        <p className="text-slate-500 text-sm">Nenhum email semanal ainda. Clique em "Gerar rascunho agora" ou aguarde a sexta-feira.</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
+          <p className="text-slate-500 text-sm">{tabInfo.emptyMsg}</p>
+        </div>
       )}
 
       <div className="space-y-4">
@@ -224,7 +278,7 @@ export default function EmailSemanalPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-slate-900">{email.assunto}</p>
-                    {email.status === 'pendente' && (
+                    {email.status !== 'enviado' && email.status !== 'sem_conteudo' && (
                       <button onClick={() => abrirEdicao(email)} className="text-slate-400 hover:text-slate-700">
                         <Edit3 size={14} />
                       </button>
@@ -232,7 +286,7 @@ export default function EmailSemanalPage() {
                   </div>
                 )}
               </div>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3 ${STATUS_COR[email.status] ?? 'bg-slate-100 text-slate-600'}`}>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3 ${BADGE_COR[email.status as StatusTab] ?? 'bg-slate-100 text-slate-600'}`}>
                 {STATUS_LABEL[email.status] ?? email.status}
               </span>
             </div>
@@ -277,13 +331,13 @@ export default function EmailSemanalPage() {
             )}
 
             {email.status === 'erro' && email.erro_envio && (
-              <div className="p-4 text-sm text-red-600 border-t border-red-100 bg-red-50 whitespace-pre-line">
+              <div className="p-4 text-sm text-red-600 border-t border-red-100 bg-red-50 whitespace-pre-line max-h-40 overflow-y-auto">
                 {email.erro_envio}
               </div>
             )}
 
-            {(email.status === 'pendente' || email.status === 'aprovado' || email.status === 'rejeitado') && (
-              <div className="p-4 flex items-center gap-3 border-t border-slate-100">
+            {email.status !== 'sem_conteudo' && (
+              <div className="p-4 flex flex-wrap items-center gap-3 border-t border-slate-100">
                 {(email.status === 'pendente' || email.status === 'rejeitado') && (
                   <button
                     onClick={() => aprovar(email.id)}
@@ -302,22 +356,22 @@ export default function EmailSemanalPage() {
                     <XCircle size={16} /> Rejeitar
                   </button>
                 )}
-                {email.status === 'aprovado' && (
+                {(email.status === 'aprovado' || email.status === 'erro') && (
                   <button
                     onClick={() => enviarAgora(email.id)}
                     disabled={enviando === email.id}
                     className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                     title="Enviar agora, sem esperar o sábado"
                   >
-                    <Send size={16} /> Enviar agora
+                    <Send size={16} /> {email.status === 'erro' ? 'Tentar enviar de novo' : 'Enviar agora'}
                   </button>
                 )}
-                {(email.status === 'pendente' || email.status === 'aprovado') && (
+                {email.status !== 'enviado' && (
                   <button
                     onClick={() => enviarTeste(email.id)}
                     disabled={enviandoTeste === email.id}
                     className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-                    title="Manda uma cópia [TESTE] só pra marcostoledojr@gmail.com (único endereço liberado até o domínio ser verificado no Resend)"
+                    title="Manda uma cópia [TESTE] pra marcos.toledo@oficina1.com.br"
                   >
                     <TestTube2 size={16} /> Enviar teste pra mim
                   </button>

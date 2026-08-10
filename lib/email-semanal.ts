@@ -454,7 +454,7 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
     .single()
 
   if (fetchError || !emailSemanalInicial) return { enviado: false, erro: 'Email semanal não encontrado' }
-  if (emailSemanalInicial.status !== 'aprovado') {
+  if (!['aprovado', 'erro'].includes(emailSemanalInicial.status)) {
     return { enviado: false, erro: `Email precisa estar aprovado (status atual: ${emailSemanalInicial.status})` }
   }
 

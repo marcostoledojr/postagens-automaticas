@@ -12,7 +12,7 @@ export const maxDuration = 30
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await req.json().catch(() => ({}))
-    const email = body.email || 'marcostoledojr@gmail.com' // Resend em modo sandbox só permite enviar pra esse endereço
+    const email = body.email || 'marcos.toledo@oficina1.com.br'
     const resultado = await enviarEmailSemanalDeTeste(params.id, email)
     if (resultado.enviado) {
       return NextResponse.json({ ok: true, email })
