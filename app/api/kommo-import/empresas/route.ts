@@ -113,7 +113,6 @@ export async function GET(req: NextRequest) {
           body: JSON.stringify([
             {
               name: empresa.nome,
-              custom_fields_values: [{ field_id: CAMPO_CNPJ_ID, values: [{ value: empresa.cnpj }] }],
             },
           ]),
         })
