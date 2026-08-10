@@ -529,6 +529,8 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
       }
     }
 
+    // Limpa registros de tentativas anteriores (ex: retry após erro) antes de gravar a lista atual
+    await supabase.from('emails_semanais_destinatarios').delete().eq('email_semanal_id', id)
     if (registrosDestinatarios.length > 0) {
       await supabase.from('emails_semanais_destinatarios').insert(registrosDestinatarios)
     }
