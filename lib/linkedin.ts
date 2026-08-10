@@ -205,6 +205,28 @@ async function criarPost(
 // Ponto de entrada principal
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Verifica se um post ainda existe/está visível no LinkedIn, consultando a
+ * própria API (não a página pública, que exige login e pode dar falso negativo).
+ * Usado antes de incluir o link "Ver post completo" no email semanal.
+ */
+export async function verificarPostExiste(linkedinPostId: string): Promise<boolean> {
+  try {
+    const { accessToken } = await buscarCredenciaisLinkedIn()
+    const urnCodificado = encodeURIComponent(linkedinPostId)
+    const res = await fetch(`${LINKEDIN_API_BASE}/rest/posts/${urnCodificado}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'LinkedIn-Version': LINKEDIN_VERSION,
+        'X-Restli-Protocol-Version': '2.0.0',
+      },
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function publicarPostLinkedIn(post: PostParaPublicar): Promise<string> {
   // 1. Credenciais do LinkedIn
   const { accessToken, personUrn } = await buscarCredenciaisLinkedIn()

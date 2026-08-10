@@ -11,6 +11,7 @@
 
 import { createClient } from './supabase-server'
 import { buscarLeadsPerdidos } from './kommo'
+import { verificarPostExiste } from './linkedin'
 import { enviarAlertaErro } from './email'
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'Oficina1 <onboarding@resend.dev>'
@@ -67,6 +68,35 @@ async function buscarConfig(chave: string, padrao: string): Promise<string> {
 function linkDoPostLinkedIn(linkedinPostId: string | null): string | null {
   if (!linkedinPostId) return null
   return `https://www.linkedin.com/feed/update/${linkedinPostId}/`
+}
+
+/**
+ * Verifica, para uma lista de destaques, quais posts ainda existem de fato no
+ * LinkedIn. Só entram no email (resumo + link) os posts confirmados — se o
+ * post ainda não foi publicado ou não existe mais, ele é descartado por
+ * inteiro (não aparece nem o resumo sem link).
+ */
+async function filtrarDestaquesValidos(
+  destaques: Destaque[],
+  postIds: string[]
+): Promise<{ destaquesValidos: Destaque[]; linksPostId: Record<string, string | null> }> {
+  const supabase = createClient()
+  const { data: postsAtuais } = await supabase
+    .from('posts')
+    .select('id, linkedin_post_id')
+    .in('id', postIds)
+
+  const verificacoes = await Promise.all(
+    (postsAtuais ?? []).map(async p => {
+      if (!p.linkedin_post_id) return [p.id, null] as const
+      const existe = await verificarPostExiste(p.linkedin_post_id)
+      return [p.id, existe ? p.linkedin_post_id : null] as const
+    })
+  )
+  const linksPostId = Object.fromEntries(verificacoes)
+  const destaquesValidos = destaques.filter(d => !!linksPostId[d.postId])
+
+  return { destaquesValidos, linksPostId }
 }
 
 // ─── Geração do rascunho (sexta) ────────────────────────────────────────────
@@ -185,10 +215,15 @@ Parte 3: exatamente ${posts.length} linhas numeradas (1. 2. 3. ...), na mesma or
       }
     })
 
+    // A prévia de sexta também só mostra posts confirmados como existentes —
+    // os que ainda não foram publicados aparecem de novo automaticamente
+    // quando o email for reconstruído no envio (sábado), já publicados.
+    const { destaquesValidos } = await filtrarDestaquesValidos(destaques, posts.map(p => p.id))
+
     const cta = await buscarConfig('email_semanal_cta', CTA_PADRAO)
     const { html, texto } = montarHtmlEmail({
       paragrafoAbertura,
-      destaques,
+      destaques: destaquesValidos,
       cta,
       linksPostId: Object.fromEntries(posts.map(p => [p.id, p.linkedin_post_id])),
     })
@@ -371,20 +406,16 @@ export async function reconstruirHtmlEmailSemanal(id: string): Promise<{ ok: boo
   if (destaques.length === 0 || !destaques[0]?.postId) return { ok: true }
 
   try {
+    // Só entram no email os posts confirmados como existentes no LinkedIn —
+    // se um post ainda não foi publicado ou foi removido, ele é descartado
+    // por inteiro (nem o resumo aparece, não só o link).
     const postIds = destaques.map(d => d.postId)
-    const { data: postsAtuais } = await supabase
-      .from('posts')
-      .select('id, linkedin_post_id')
-      .in('id', postIds)
-
-    const linksPostId = Object.fromEntries(
-      (postsAtuais ?? []).map(p => [p.id, p.linkedin_post_id])
-    )
+    const { destaquesValidos, linksPostId } = await filtrarDestaquesValidos(destaques, postIds)
 
     const cta = await buscarConfig('email_semanal_cta', CTA_PADRAO)
     const refeito = montarHtmlEmail({
       paragrafoAbertura: emailSemanal.paragrafo_abertura ?? '',
-      destaques,
+      destaques: destaquesValidos,
       cta,
       linksPostId,
     })
