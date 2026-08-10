@@ -68,10 +68,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
   }
   const modo = searchParams.get('modo') === 'real' ? 'real' : 'teste'
+  const inicio = Number(searchParams.get('inicio') ?? '0')
+  const quantidade = Number(searchParams.get('quantidade') ?? '5')
+  const lote = EMPRESAS.slice(inicio, inicio + quantidade)
 
   const resultados: any[] = []
 
-  for (const empresa of EMPRESAS) {
+  for (const empresa of lote) {
     try {
       // Acha o lead pelo nome + o contato vinculado
       const dataLead = await kommoFetch(`/leads?query=${encodeURIComponent(empresa.nome)}&limit=5&with=contacts`)
@@ -146,5 +149,14 @@ export async function GET(req: NextRequest) {
     nao_encontrados: resultados.filter(r => r.status === 'lead_nao_encontrado' || r.status === 'contato_nao_encontrado').length,
   }
 
-  return NextResponse.json({ ok: true, modo, resumo, resultados })
+  return NextResponse.json({
+    ok: true,
+    modo,
+    inicio,
+    quantidade,
+    proximo_inicio: inicio + quantidade < EMPRESAS.length ? inicio + quantidade : null,
+    total_empresas: EMPRESAS.length,
+    resumo,
+    resultados,
+  })
 }
