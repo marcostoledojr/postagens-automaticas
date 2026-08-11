@@ -68,6 +68,24 @@ export async function resolverPipelineEStatus(
   return { pipelineId: pipeline.id, statusId: status.id }
 }
 
+// ─── Cria nota de texto no timeline de um lead ──────────────────────────────
+
+export async function criarNotaLead(leadId: number, texto: string): Promise<void> {
+  const apiUrl = process.env.KOMMO_API_URL
+  const token = process.env.KOMMO_LONG_LIVED_TOKEN
+  const res = await fetch(`${apiUrl}/leads/${leadId}/notes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify([{ note_type: 'common', params: { text: texto } }]),
+  })
+  if (!res.ok) {
+    throw new Error(`Kommo /leads/${leadId}/notes: ${res.status} ${await res.text()}`)
+  }
+}
+
 // ─── Busca leads perdidos + emails dos contatos vinculados ─────────────────
 
 export type LeadPerdido = {

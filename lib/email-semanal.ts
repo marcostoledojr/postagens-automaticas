@@ -10,7 +10,7 @@
  */
 
 import { createClient } from './supabase-server'
-import { buscarLeadsPerdidos } from './kommo'
+import { buscarLeadsPerdidos, criarNotaLead } from './kommo'
 import { verificarPostExiste } from './linkedin'
 import { enviarAlertaErro } from './email'
 
@@ -510,6 +510,11 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
       ].map(e => e.toLowerCase().trim()))
     )
 
+    const leadIdPorEmail = new Map<string, number>()
+    for (const l of leads) {
+      if (l.email) leadIdPorEmail.set(l.email.toLowerCase().trim(), l.leadId)
+    }
+
     const { data: optouts } = await supabase.from('email_optout').select('email')
     const setOptout = new Set((optouts ?? []).map(o => o.email.toLowerCase().trim()))
     const destinatarios = emailsUnicos.filter(e => !setOptout.has(e))
@@ -551,6 +556,12 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
         } else {
           enviados++
           registrosDestinatarios.push({ email_semanal_id: id, email, status: 'enviado', erro: null })
+
+          const leadId = leadIdPorEmail.get(email)
+          if (leadId) {
+            const dataEnvio = new Date().toLocaleDateString('pt-BR')
+            criarNotaLead(leadId, `Email semanal Oficina1 enviado em ${dataEnvio}.`).catch(() => {})
+          }
         }
         await sleep(600) // evita estourar rate limit do Resend
       } catch (err: any) {

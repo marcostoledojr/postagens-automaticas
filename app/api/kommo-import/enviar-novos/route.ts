@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
+import { criarNotaLead } from '@/lib/kommo'
 
 // Envia o email semanal já existente (mesmo conteúdo já enviado à base antiga)
 // apenas para os leads recém-importados via /api/kommo-import/executar +
@@ -18,6 +19,16 @@ const CONTATO_IDS = [
   15277716, 15277718, 15277720, 15277722, 15277724,
   15277726, 15277728, 15277732, 15277734, 15277736,
   15277738, 15277740, 15277742, 15277744,
+]
+
+// lead_id na mesma ordem de CONTATO_IDS (um lead por contato)
+const LEAD_IDS = [
+  8303696, 8303698, 8303700, 8303702, 8303704,
+  8303706, 8303708, 8303710, 8303714, 8303716,
+  8303718, 8303720, 8303722, 8303726, 8303728,
+  8303730, 8303732, 8303734, 8303738, 8303740,
+  8303742, 8303744, 8303748, 8303750, 8303752,
+  8303754, 8303756, 8303758, 8303760,
 ]
 
 async function kommoFetch(path: string) {
@@ -64,6 +75,8 @@ export async function GET(req: NextRequest) {
   const apiKey = process.env.RESEND_API_KEY
 
   for (const contato of contatos) {
+    const idxGlobal = CONTATO_IDS.indexOf(contato.id)
+    const leadId = idxGlobal >= 0 ? LEAD_IDS[idxGlobal] : undefined
     const campoEmail = (contato.custom_fields_values ?? []).find((c: any) => c.field_code === 'EMAIL')
     const email = campoEmail?.values?.[0]?.value
 
@@ -101,6 +114,10 @@ export async function GET(req: NextRequest) {
       resultados.push({ contato_id: contato.id, email, status: 'erro', erro: `Resend ${res.status}: ${await res.text()}` })
     } else {
       resultados.push({ contato_id: contato.id, email, status: 'enviado' })
+      if (leadId) {
+        const dataEnvio = new Date().toLocaleDateString('pt-BR')
+        criarNotaLead(leadId, `Email semanal Oficina1 enviado em ${dataEnvio}.`).catch(() => {})
+      }
     }
 
     await sleep(600)
