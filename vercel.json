@@ -30,11 +30,15 @@
     },
     {
       "path": "/api/cron",
-      "schedule": "0 16 * * 1-5"
+      "schedule": "0 12 * * 5"
     },
     {
       "path": "/api/cron",
-      "schedule": "0 12 * * 5"
+      "schedule": "0 13 * * 1-5"
+    },
+    {
+      "path": "/api/cron",
+      "schedule": "0 16 * * 1-5"
     }
   ]
 }

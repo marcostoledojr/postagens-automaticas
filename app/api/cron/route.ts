@@ -1,16 +1,15 @@
 /**
  * Endpoint do Cron Job - executado automaticamente pelo Vercel Cron
  * Horários (UTC → BRT):
- *   10:00 UTC = 07:00 BRT → Geração de posts (Seg-Sex)
- *   11:00 UTC = 08:00 BRT → Publicação manhã (Seg-Sáb) + Envio do email semanal (só Sáb)
- *   12:00 UTC = 09:00 BRT → Resumo semanal (LinkedIn) + rascunho do Email Semanal (só Sex)
+ *   10:00 UTC = 07:00 BRT → Geração do slot MANHÃ (Seg-Sex)
+ *   11:00 UTC = 08:00 BRT → Publicação manhã (Seg-Sáb) + Envio email semanal (só Sáb)
+ *   12:00 UTC = 09:00 BRT → Resumo semanal (LinkedIn) + rascunho Email Semanal (só Sex)
+ *   13:00 UTC = 10:00 BRT → Geração do slot TARDE (Seg-Sex) — cron separado para evitar timeout
  *   16:00 UTC = 13:00 BRT → Publicação tarde (Seg-Sex)
  *
- * Obs: Plano Hobby tem janela flexível de até 1h — crons podem disparar com atraso.
- * O resumo semanal e o email semanal saíram do horário de geração de posts (10h)
- * porque a geração diária já é pesada (imagem + busca + texto) e pode consumir
- * o limite de 60s da função antes de chegar nessas tarefas extras — por isso
- * rodam num horário próprio, mais leve.
+ * IMPORTANTE: A geração de cada slot (manhã e tarde) roda em crons separados porque
+ * gerar 1 post (busca web + Claude + fal.ai + upload) costuma levar 40-55s.
+ * Dois posts em sequência no mesmo cron excederia o limite de 60s do Vercel Hobby.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -38,19 +37,20 @@ export async function GET(req: NextRequest) {
 
   const resultados: Record<string, any> = {}
 
-  // === TAREFA 1: Geração de posts para o próximo dia útil (10h UTC / 7h BRT, Seg-Sex) ===
+  // === TAREFA 1: Geração do slot MANHÃ (10h UTC / 7h BRT, Seg-Sex) ===
+  // Separado do slot tarde para não exceder o limite de 60s por chamada.
   if (hora === 10 && diaSemana >= 1 && diaSemana <= 5) {
-    console.log('[CRON] Iniciando geração de posts para o próximo dia útil...')
+    console.log('[CRON] Gerando slot MANHÃ para o próximo dia útil...')
     try {
       // Sexta: gera 3 dias à frente para cobrir segunda (sáb+dom pulados pelo motor)
       const diasAFrente = diaSemana === 5 ? 3 : 1
-      const resultado = await gerarPostsParaAmanha({ diasAFrente })
+      const resultado = await gerarPostsParaAmanha({ diasAFrente, apenasSlot: 'manha' })
       resultados.geracao = resultado
       console.log(`[CRON] Posts gerados: ${resultado.gerados}, erros: ${resultado.erros}`)
     } catch (err: any) {
       resultados.geracao = { erro: err.message }
-      console.error('[CRON] Erro na geração:', err)
-      await enviarAlertaErro({ fluxo: 'Geração de Posts', erro: err.message })
+      console.error('[CRON] Erro na geração manhã:', err)
+      await enviarAlertaErro({ fluxo: 'Geração de Posts (manhã)', erro: err.message })
     }
 
     // Coleta métricas junto com a geração (uma vez por dia)
@@ -65,8 +65,24 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // === TAREFA 1A: Resumo semanal (LinkedIn) + rascunho do Email Semanal (sexta, 12h UTC / 9h BRT) ===
-  // Separado da geração diária de posts (10h) para não competir pelo limite de 60s do cron.
+  // === TAREFA 1B: Geração do slot TARDE (13h UTC / 10h BRT, Seg-Sex) ===
+  // Cron separado do slot manhã para não exceder o limite de 60s por chamada.
+  if (hora === 13 && diaSemana >= 1 && diaSemana <= 5) {
+    console.log('[CRON] Gerando slot TARDE para o próximo dia útil...')
+    try {
+      const diasAFrente = diaSemana === 5 ? 3 : 1
+      const resultado = await gerarPostsParaAmanha({ diasAFrente, apenasSlot: 'tarde' })
+      resultados.geracaoTarde = resultado
+      console.log(`[CRON] Posts tarde gerados: ${resultado.gerados}, erros: ${resultado.erros}`)
+    } catch (err: any) {
+      resultados.geracaoTarde = { erro: err.message }
+      console.error('[CRON] Erro na geração tarde:', err)
+      await enviarAlertaErro({ fluxo: 'Geração de Posts (tarde)', erro: err.message })
+    }
+  }
+
+  // === TAREFA 1C: Resumo semanal (LinkedIn) + rascunho do Email Semanal (sexta, 12h UTC / 9h BRT) ===
+  // Separado da geração diária de posts para não competir pelo limite de 60s do cron.
   if (hora === 12 && diaSemana === 5) {
     console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
     try {
@@ -155,9 +171,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Métricas: coletadas junto com a geração (hora === 10), bloco removido daqui
-
-  return NextResponse.json({ hora_utc: hora, ...resultados })
+  return NextResponse.json({ hora_utc: hora, dia_semana: diaSemana, ...resultados })
 }
 
 async function publicarPostsAgendados() {

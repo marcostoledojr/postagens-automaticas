@@ -23,6 +23,7 @@ import { addDays, setHours, setMinutes, setSeconds, format } from 'date-fns'
 type ConfigGeracao = {
   diasAFrente?: number
   forcarRegeneracao?: boolean
+  apenasSlot?: 'manha' | 'tarde' // se definido, gera somente esse slot (evita timeout 60s)
 }
 
 // ─── Mapeamento fixo de slots ────────────────────────────────────────────────
@@ -143,7 +144,14 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
     const slots = [
       { horario: SLOT_MANHA, tema: manha },
       { horario: SLOT_TARDE, tema: tarde },
-    ].filter(s => s.tema !== null)
+    ]
+    .filter(s => s.tema !== null)
+    .filter(s => {
+      if (!config.apenasSlot) return true
+      if (config.apenasSlot === 'manha') return s.horario === SLOT_MANHA
+      if (config.apenasSlot === 'tarde') return s.horario === SLOT_TARDE
+      return true
+    })
 
     for (const slot of slots) {
       const tema = slot.tema!
