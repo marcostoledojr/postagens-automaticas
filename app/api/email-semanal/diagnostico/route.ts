@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
   if (!emailSemanal) return NextResponse.json({ ok: false, erro: 'não encontrado' }, { status: 404 })
 
   const postIds = (emailSemanal.posts_incluidos ?? []).map((d: any) => d.postId)
-  const { data: posts } = await supabase.from('posts').select('id, linkedin_post_id, status, gancho').in('id', postIds)
+  const { data: posts, error: erroPosts } = await supabase.from('posts').select('id, linkedin_post_id, status, gancho').in('id', postIds)
+
+  if (searchParams.get('debug') === '1') {
+    return NextResponse.json({ ok: true, postIds, totalEncontrados: posts?.length ?? 0, erroPosts })
+  }
 
   const resultados = []
   for (const p of posts ?? []) {
