@@ -227,6 +227,20 @@ export async function verificarPostExiste(linkedinPostId: string): Promise<boole
   }
 }
 
+export async function verificarPostExisteDebug(linkedinPostId: string): Promise<{ ok: boolean; status: number; corpo: string }> {
+  const { accessToken } = await buscarCredenciaisLinkedIn()
+  const urnCodificado = encodeURIComponent(linkedinPostId)
+  const res = await fetch(`${LINKEDIN_API_BASE}/rest/posts/${urnCodificado}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'LinkedIn-Version': LINKEDIN_VERSION,
+      'X-Restli-Protocol-Version': '2.0.0',
+    },
+  })
+  const corpo = await res.text()
+  return { ok: res.ok, status: res.status, corpo: corpo.slice(0, 300) }
+}
+
 export async function publicarPostLinkedIn(post: PostParaPublicar): Promise<string> {
   // 1. Credenciais do LinkedIn
   const { accessToken, personUrn } = await buscarCredenciaisLinkedIn()

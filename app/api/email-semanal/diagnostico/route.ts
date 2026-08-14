@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { verificarPostExiste } from '@/lib/linkedin'
+import { verificarPostExisteDebug } from '@/lib/linkedin'
 
 // Diagnóstico read-only: para um email_semanal pendente, mostra o
 // linkedin_post_id de cada post incluído e o resultado da checagem
@@ -29,9 +29,14 @@ export async function GET(req: NextRequest) {
   for (const p of posts ?? []) {
     let existeNoLinkedin: boolean | null = null
     let erroChecagem: string | null = null
+    let statusHttp: number | null = null
+    let corpoResposta: string | null = null
     if (p.linkedin_post_id) {
       try {
-        existeNoLinkedin = await verificarPostExiste(p.linkedin_post_id)
+        const r = await verificarPostExisteDebug(p.linkedin_post_id)
+        existeNoLinkedin = r.ok
+        statusHttp = r.status
+        corpoResposta = r.corpo
       } catch (e: any) {
         erroChecagem = e.message
       }
@@ -41,6 +46,8 @@ export async function GET(req: NextRequest) {
       status: p.status,
       linkedin_post_id: p.linkedin_post_id,
       existeNoLinkedin,
+      statusHttp,
+      corpoResposta,
       erroChecagem,
     })
   }
