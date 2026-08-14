@@ -11,7 +11,7 @@
 
 import { createClient } from './supabase-server'
 import { buscarLeadsPerdidos, criarNotaLead } from './kommo'
-import { verificarPostExiste } from './linkedin'
+// import { verificarPostExiste } from './linkedin' // desativado: API do LinkedIn retorna 403 (sem permissão de leitura) para esse endpoint
 import { enviarAlertaErro } from './email'
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? 'Oficina1 <onboarding@resend.dev>'
@@ -72,9 +72,11 @@ function linkDoPostLinkedIn(linkedinPostId: string | null): string | null {
 
 /**
  * Verifica, para uma lista de destaques, quais posts ainda existem de fato no
- * LinkedIn. Só entram no email (resumo + link) os posts confirmados — se o
- * post ainda não foi publicado ou não existe mais, ele é descartado por
- * inteiro (não aparece nem o resumo sem link).
+ * LinkedIn. NOTA: a verificação ativa via API (verificarPostExiste) foi
+ * desativada porque a integração do LinkedIn não tem permissão de leitura
+ * nesse endpoint (retorna 403 ACCESS_DENIED para todo post, mesmo os
+ * publicados normalmente) — na prática bloqueava o email inteiro. Agora
+ * confiamos no linkedin_post_id gravado no momento da publicação.
  */
 async function filtrarDestaquesValidos(
   destaques: Destaque[],
@@ -86,14 +88,9 @@ async function filtrarDestaquesValidos(
     .select('id, linkedin_post_id')
     .in('id', postIds)
 
-  const verificacoes = await Promise.all(
-    (postsAtuais ?? []).map(async p => {
-      if (!p.linkedin_post_id) return [p.id, null] as const
-      const existe = await verificarPostExiste(p.linkedin_post_id)
-      return [p.id, existe ? p.linkedin_post_id : null] as const
-    })
+  const linksPostId = Object.fromEntries(
+    (postsAtuais ?? []).map(p => [p.id, p.linkedin_post_id ?? null] as const)
   )
-  const linksPostId = Object.fromEntries(verificacoes)
   const destaquesValidos = destaques.filter(d => !!linksPostId[d.postId])
 
   return { destaquesValidos, linksPostId }
