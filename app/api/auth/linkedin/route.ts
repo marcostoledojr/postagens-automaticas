@@ -24,10 +24,13 @@ export async function GET(req: NextRequest) {
   // Escopos:
   // openid + profile + email → autenticação e person URN (via /v2/userinfo)
   // w_member_social → publicar posts
-  // r_member_postAnalytics → analytics de posts pessoais (impressões, reações, etc.)
-  //   Requer: Community Management API aprovada no LinkedIn Developer Portal
-  //   Link de cadastro: https://developer.linkedin.com → seu app → Products → Community Management API
-  const scope = 'openid profile email w_member_social r_member_postAnalytics'
+  //
+  // NÃO incluir r_member_postAnalytics aqui: esse escopo exige a Community
+  // Management API aprovada especificamente para este app (client id), e se
+  // não estiver aprovada o LinkedIn rejeita a autorização inteira (o usuário
+  // cai em "Conexão cancelada" mesmo aceitando a tela). O analytics já é
+  // coletado por um segundo app dedicado em /api/auth/linkedin-analytics.
+  const scope = 'openid profile email w_member_social'
 
   const url = new URL('https://www.linkedin.com/oauth/v2/authorization')
   url.searchParams.set('response_type', 'code')
