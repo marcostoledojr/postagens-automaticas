@@ -4,12 +4,20 @@ import { CheckCircle, RefreshCw, Send, Mail, Edit3, XCircle, RotateCcw, TestTube
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
+type Destaque = {
+  postId: string
+  tema: string
+  gancho: string
+  resumo: string
+}
+
 type EmailSemanal = {
   id: string
   semana_inicio: string
   semana_fim: string
   assunto: string
   paragrafo_abertura: string | null
+  posts_incluidos: Destaque[] | null
   corpo_html: string
   status: string
   destinatarios_total: number
@@ -71,6 +79,7 @@ export default function EmailSemanalPage() {
   const [editando, setEditando] = useState<string | null>(null)
   const [assuntoEdit, setAssuntoEdit] = useState('')
   const [aberturaEdit, setAberturaEdit] = useState('')
+  const [destaquesEdit, setDestaquesEdit] = useState<Destaque[]>([])
   const [salvando, setSalvando] = useState(false)
   const [destinatariosAbertos, setDestinatariosAbertos] = useState<string | null>(null)
   const [destinatarios, setDestinatarios] = useState<Record<string, { email: string; status: string; erro: string | null }[]>>({})
@@ -137,6 +146,11 @@ export default function EmailSemanalPage() {
     setEditando(email.id)
     setAssuntoEdit(email.assunto)
     setAberturaEdit(email.paragrafo_abertura ?? '')
+    setDestaquesEdit((email.posts_incluidos ?? []).map(d => ({ ...d })))
+  }
+
+  function atualizarDestaque(index: number, campo: 'gancho' | 'resumo', valor: string) {
+    setDestaquesEdit(prev => prev.map((d, i) => (i === index ? { ...d, [campo]: valor } : d)))
   }
 
   async function salvarEdicao(id: string) {
@@ -144,7 +158,7 @@ export default function EmailSemanalPage() {
     await fetch(`/api/email-semanal/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assunto: assuntoEdit, paragrafo_abertura: aberturaEdit }),
+      body: JSON.stringify({ assunto: assuntoEdit, paragrafo_abertura: aberturaEdit, posts_incluidos: destaquesEdit }),
     })
     setSalvando(false)
     setEditando(null)
@@ -268,6 +282,27 @@ export default function EmailSemanalPage() {
                         className="border border-slate-300 rounded px-2 py-1 text-sm w-full mt-0.5"
                       />
                     </div>
+                    {destaquesEdit.length > 0 && (
+                      <div className="space-y-3 max-h-72 overflow-y-auto border border-slate-200 rounded-lg p-3 bg-slate-50">
+                        <p className="text-xs text-slate-500 font-medium">Posts incluídos ({destaquesEdit.length})</p>
+                        {destaquesEdit.map((d, i) => (
+                          <div key={d.postId} className="space-y-1.5 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
+                            <label className="text-xs text-slate-400">Título/gancho — {d.tema}</label>
+                            <input
+                              value={d.gancho}
+                              onChange={e => atualizarDestaque(i, 'gancho', e.target.value)}
+                              className="border border-slate-300 rounded px-2 py-1 text-sm w-full"
+                            />
+                            <textarea
+                              value={d.resumo}
+                              onChange={e => atualizarDestaque(i, 'resumo', e.target.value)}
+                              rows={2}
+                              className="border border-slate-300 rounded px-2 py-1 text-sm w-full"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-3">
                       <button onClick={() => salvarEdicao(email.id)} disabled={salvando} className="text-xs text-blue-600 font-medium disabled:opacity-50">
                         {salvando ? 'Salvando...' : 'Salvar'}

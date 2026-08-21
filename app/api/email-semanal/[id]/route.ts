@@ -23,8 +23,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 })
 
-  // Se o parágrafo de abertura mudou, reconstrói o HTML com o texto novo
-  if (body.paragrafo_abertura !== undefined) {
+  // Se o parágrafo de abertura ou os destaques (gancho/resumo por post) mudaram,
+  // reconstrói o HTML com o conteúdo novo
+  if (body.paragrafo_abertura !== undefined || body.posts_incluidos !== undefined) {
     await reconstruirHtmlEmailSemanal(id)
     const { data: atualizado } = await supabase.from('emails_semanais').select('*').eq('id', id).single()
     return NextResponse.json({ email: atualizado ?? data })
