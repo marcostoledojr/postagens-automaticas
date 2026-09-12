@@ -594,7 +594,11 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
       })
     }
 
-    return { enviado: enviados > 0, destinatarios: enviados }
+    return {
+      enviado: enviados > 0,
+      destinatarios: enviados,
+      erro: enviados === 0 ? (errosDetalhe.slice(0, 5).join(' | ') || 'Todos os envios falharam') : undefined,
+    }
   } catch (err: any) {
     console.error('[EMAIL SEMANAL] Erro ao enviar:', err)
     await supabase
