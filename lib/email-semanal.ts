@@ -529,43 +529,70 @@ export async function enviarEmailSemanalPorId(id: string): Promise<{
     const errosDetalhe: string[] = []
     const registrosDestinatarios: { email_semanal_id: string; email: string; status: string; erro: string | null }[] = []
 
-    for (const email of destinatarios) {
-      try {
+    // Envio em lote (Resend /emails/batch aceita até 100 por chamada). Isso
+    // evita tanto o rate limit (429) quanto o teto de 60s da função
+    // conforme a lista de destinatários cresce — mandar um email de cada
+    // vez deixa de caber no tempo disponível a partir de um certo tamanho.
+    const TAMANHO_LOTE = 100
+    for (let i = 0; i < destinatarios.length; i += TAMANHO_LOTE) {
+      const lote = destinatarios.slice(i, i + TAMANHO_LOTE)
+      const payload = lote.map(email => {
         const unsubUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/email-semanal/optout?email=${encodeURIComponent(email)}`
-        const htmlPersonalizado = corpoHtml.replaceAll('{{UNSUB_URL}}', unsubUrl)
+        return {
+          from: EMAIL_FROM,
+          to: [email],
+          reply_to: REPLY_TO,
+          subject: emailSemanal.assunto,
+          html: corpoHtml.replaceAll('{{UNSUB_URL}}', unsubUrl),
+        }
+      })
 
-        const res = await fetch('https://api.resend.com/emails', {
+      try {
+        let res = await fetch('https://api.resend.com/emails/batch', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: EMAIL_FROM,
-            to: [email],
-            reply_to: REPLY_TO,
-            subject: emailSemanal.assunto,
-            html: htmlPersonalizado,
-          }),
+          body: JSON.stringify(payload),
         })
 
-        if (!res.ok) {
-          comErro++
-          errosDetalhe.push(`${email}: ${res.status}`)
-          registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: `HTTP ${res.status}` })
-        } else {
-          enviados++
-          registrosDestinatarios.push({ email_semanal_id: id, email, status: 'enviado', erro: null })
+        let tentativasRestantes = 2
+        while (res.status === 429 && tentativasRestantes > 0) {
+          const retryAfter = Number(res.headers.get('retry-after')) || 3
+          await sleep((retryAfter + 1) * 1000)
+          res = await fetch('https://api.resend.com/emails/batch', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          tentativasRestantes--
+        }
 
-          const leadId = leadIdPorEmail.get(email)
-          if (leadId) {
-            const dataEnvio = new Date().toLocaleDateString('pt-BR')
-            criarNotaLead(leadId, `Email semanal Oficina1 enviado em ${dataEnvio}.`).catch(() => {})
+        if (!res.ok) {
+          const corpoErro = await res.text()
+          comErro += lote.length
+          errosDetalhe.push(`Lote ${i / TAMANHO_LOTE + 1}: HTTP ${res.status} - ${corpoErro.slice(0, 200)}`)
+          for (const email of lote) {
+            registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: `HTTP ${res.status}` })
+          }
+        } else {
+          enviados += lote.length
+          for (const email of lote) {
+            registrosDestinatarios.push({ email_semanal_id: id, email, status: 'enviado', erro: null })
+            const leadId = leadIdPorEmail.get(email)
+            if (leadId) {
+              const dataEnvio = new Date().toLocaleDateString('pt-BR')
+              criarNotaLead(leadId, `Email semanal Oficina1 enviado em ${dataEnvio}.`).catch(() => {})
+            }
           }
         }
-        await sleep(600) // evita estourar rate limit do Resend
       } catch (err: any) {
-        comErro++
-        errosDetalhe.push(`${email}: ${err.message}`)
-        registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: err.message })
+        comErro += lote.length
+        errosDetalhe.push(`Lote ${i / TAMANHO_LOTE + 1}: ${err.message}`)
+        for (const email of lote) {
+          registrosDestinatarios.push({ email_semanal_id: id, email, status: 'erro', erro: err.message })
+        }
       }
+
+      if (i + TAMANHO_LOTE < destinatarios.length) await sleep(1000)
     }
 
     // Limpa registros de tentativas anteriores (ex: retry após erro) antes de gravar a lista atual
