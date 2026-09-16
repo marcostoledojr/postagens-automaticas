@@ -267,6 +267,7 @@ export default function FilaAprovacao() {
 
       let gerados = 0
       let erros = 0
+      const errosDetalhe: string[] = []
 
       // 2. Gera 1 post por slot (chamadas individuais < 60s cada)
       for (let i = 0; i < slots.length; i++) {
@@ -286,12 +287,21 @@ export default function FilaAprovacao() {
             data_iso: slot.data_iso,
           }),
         })
-        if (res.ok) { gerados++ } else { erros++ }
+        if (res.ok) {
+          gerados++
+        } else {
+          erros++
+          const data = await res.json().catch(() => ({}))
+          errosDetalhe.push(`${slot.dia_label} ${slot.horario} — ${slot.tema_nome}: ${data.erro ?? `HTTP ${res.status}`}`)
+        }
 
         await carregar()
       }
 
-      alert(`✅ Gerados: ${gerados} | ❌ Erros: ${erros}`)
+      alert(
+        `✅ Gerados: ${gerados} | ❌ Erros: ${erros}` +
+        (errosDetalhe.length > 0 ? `\n\n${errosDetalhe.join('\n')}` : '')
+      )
       setTabAtiva('pendente')
     } catch (e: any) {
       alert(`Erro: ${e.message}`)
