@@ -146,6 +146,57 @@ async function gerarPromptViaClaude(
   }
 }
 
+// ─── Geração via Gemini (alternativa em teste) ───────────────────────────────
+
+/**
+ * Mesma pipeline de prompt (Claude como diretor de arte + fallback), mas
+ * gera a imagem com o Gemini 2.5 Flash Image (Google) em vez do fal.ai.
+ * Usado pelo botão "Gerar com Gemini" na fila, lado a lado com o fluxo
+ * atual, para comparar qualidade antes de decidir qual vira o padrão.
+ */
+export async function gerarImagemGemini(
+  tema: string,
+  objetivo: string,
+  textoPost: string,
+  tipoPost: 'comercial' | 'autoridade' = 'comercial',
+  instrucaoAdicional?: string
+): Promise<ResultadoImagem> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY não configurada')
+  }
+
+  // Mesmo prompt (Claude diretor de arte, com fallback keyword-based)
+  const claudePrompt = await gerarPromptViaClaude(tema, textoPost, tipoPost, instrucaoAdicional)
+  const prompt = claudePrompt ?? construirPromptFallback(tema, textoPost, tipoPost)
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Gemini image error ${res.status}: ${err}`)
+  }
+
+  const data = await res.json()
+  const partes = data.candidates?.[0]?.content?.parts ?? []
+  const partImagem = partes.find((p: any) => p.inlineData?.data)
+  const base64 = partImagem?.inlineData?.data
+  if (!base64) throw new Error(`Gemini sem imagem na resposta: ${JSON.stringify(data).slice(0, 300)}`)
+
+  const buffer = Buffer.from(base64, 'base64')
+  const urlFinal = await compositarLogoSupabase(buffer)
+  return { url: urlFinal, prompt, tipo: tipoPost }
+}
+
 // ─── Função principal ─────────────────────────────────────────────────────────
 
 export async function gerarImagem(
@@ -253,8 +304,9 @@ async function gerarImagemFallback(
 
 // ─── Logo via Supabase Storage ────────────────────────────────────────────────
 
-async function compositarLogoSupabase(imageUrl: string): Promise<string> {
+async function compositarLogoSupabase(imagemOrigem: string | Buffer): Promise<string> {
   const BUCKET = 'post-images'
+  const eBuffer = Buffer.isBuffer(imagemOrigem)
 
   try {
     const sharp = (await import('sharp')).default
@@ -262,12 +314,18 @@ async function compositarLogoSupabase(imageUrl: string): Promise<string> {
     const logoPath = path.join(process.cwd(), 'public', 'logo-oficina1.png')
     if (!fs.existsSync(logoPath)) {
       console.warn('[LOGO] logo-oficina1.png não encontrado em public/')
-      return imageUrl
+      if (eBuffer) throw new Error('logo-oficina1.png não encontrado — não é possível retornar buffer sem URL')
+      return imagemOrigem as string
     }
 
-    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
-    if (!imgRes.ok) throw new Error(`Erro ao baixar imagem: ${imgRes.status}`)
-    const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
+    let imgBuffer: Buffer
+    if (eBuffer) {
+      imgBuffer = imagemOrigem as Buffer
+    } else {
+      const imgRes = await fetch(imagemOrigem as string, { signal: AbortSignal.timeout(15000) })
+      if (!imgRes.ok) throw new Error(`Erro ao baixar imagem: ${imgRes.status}`)
+      imgBuffer = Buffer.from(await imgRes.arrayBuffer())
+    }
 
     const logoBuffer = await sharp(logoPath)
       .resize(185, null, { fit: 'inside' })
@@ -303,7 +361,8 @@ async function compositarLogoSupabase(imageUrl: string): Promise<string> {
 
     if (uploadErr) {
       console.error('[LOGO] Erro no upload Supabase:', uploadErr.message)
-      return imageUrl
+      if (eBuffer) throw new Error(`Upload no Supabase falhou: ${uploadErr.message}`)
+      return imagemOrigem as string
     }
 
     const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(uploaded.path)
@@ -312,7 +371,8 @@ async function compositarLogoSupabase(imageUrl: string): Promise<string> {
 
   } catch (err: any) {
     console.error('[LOGO] Erro na composição do logo:', err?.message ?? err)
-    return imageUrl
+    if (eBuffer) throw err
+    return imagemOrigem as string
   }
 }
 
