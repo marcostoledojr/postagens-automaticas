@@ -10,6 +10,16 @@
  * IMPORTANTE: A geração de cada slot (manhã e tarde) roda em crons separados porque
  * gerar 1 post (busca web + Claude + fal.ai + upload) costuma levar 40-55s.
  * Dois posts em sequência no mesmo cron excederia o limite de 60s do Vercel Hobby.
+ *
+ * ATENÇÃO — janela flexível do Vercel Hobby: o Vercel não garante o disparo no
+ * minuto exato, pode atrasar até 1h (ex: cron das 10:00 UTC disparar às 10:47
+ * OU só às 11:0x, já na hora seguinte). Por isso cada checagem abaixo aceita a
+ * hora "certa" E a hora seguinte, não só `hora === X`. Isso é seguro porque
+ * gerarPostsParaAmanha/gerarResumoSemanal/gerarEmailSemanal e o envio semanal
+ * já pulam o que já foi feito (idempotentes) — vale a pena tolerar a janela a
+ * mais do que perder silenciosamente a execução do dia, que foi o que aconteceu
+ * em 16/09/2026 (cron das 10h e das 11h não geraram nada e não caíram em erro,
+ * porque `agora.getHours()` bateu numa hora "sem dono" quando o disparo atrasou).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -39,7 +49,8 @@ export async function GET(req: NextRequest) {
 
   // === TAREFA 1: Geração do slot MANHÃ (10h UTC / 7h BRT, Seg-Sex) ===
   // Separado do slot tarde para não exceder o limite de 60s por chamada.
-  if (hora === 10 && diaSemana >= 1 && diaSemana <= 5) {
+  // Aceita também 11h (janela flexível do Hobby — ver nota no topo do arquivo).
+  if ((hora === 10 || hora === 11) && diaSemana >= 1 && diaSemana <= 5) {
     console.log('[CRON] Gerando slot MANHÃ para o próximo dia útil...')
     try {
       // Sexta: gera 3 dias à frente para cobrir segunda (sáb+dom pulados pelo motor)
@@ -67,7 +78,8 @@ export async function GET(req: NextRequest) {
 
   // === TAREFA 1B: Geração do slot TARDE (13h UTC / 10h BRT, Seg-Sex) ===
   // Cron separado do slot manhã para não exceder o limite de 60s por chamada.
-  if (hora === 13 && diaSemana >= 1 && diaSemana <= 5) {
+  // Aceita também 14h (janela flexível do Hobby — ver nota no topo do arquivo).
+  if ((hora === 13 || hora === 14) && diaSemana >= 1 && diaSemana <= 5) {
     console.log('[CRON] Gerando slot TARDE para o próximo dia útil...')
     try {
       const diasAFrente = diaSemana === 5 ? 3 : 1
@@ -83,6 +95,11 @@ export async function GET(req: NextRequest) {
 
   // === TAREFA 1C: Resumo semanal (LinkedIn) + rascunho do Email Semanal (sexta, 12h UTC / 9h BRT) ===
   // Separado da geração diária de posts para não competir pelo limite de 60s do cron.
+  // NÃO ampliamos a janela aqui de propósito: 13h já é a hora certa da geração do
+  // slot TARDE (TAREFA 1B) — se também aceitássemos 13h aqui, um atraso do Vercel
+  // faria as duas tarefas (bem mais pesadas) rodarem juntas na mesma chamada e
+  // estourar os 60s. Se essa cair na janela de atraso, use o botão "Gerar rascunho
+  // agora" na tela de Email Semanal como recuperação manual.
   if (hora === 12 && diaSemana === 5) {
     console.log('[CRON] Sexta — gerando resumo semanal para aprovação...')
     try {
@@ -112,7 +129,8 @@ export async function GET(req: NextRequest) {
   }
 
     // === TAREFA 1B: Envio do email semanal (sábado, 11h UTC / 8h BRT — só dispara se estiver aprovado) ===
-  if (hora === 11 && diaSemana === 6) {
+  // Aceita também 12h (janela flexível do Hobby — ver nota no topo do arquivo).
+  if ((hora === 11 || hora === 12) && diaSemana === 6) {
     console.log('[CRON] Sábado — verificando email semanal aprovado para envio...')
     try {
       const resultadoEnvio = await enviarEmailSemanalDaSemana()
@@ -128,7 +146,11 @@ export async function GET(req: NextRequest) {
   }
 
   // === TAREFA 2: Publicação de posts (11h UTC / 8h BRT e 16h UTC / 13h BRT) ===
-  if (hora === 11 || hora === 16) {
+  // Aceita também 12h e 17h (janela flexível do Hobby — ver nota no topo do
+  // arquivo). publicarPostsAgendados() já calcula sua própria janela precisa
+  // de ±30min em cima da hora real, então rodar "a mais" aqui é seguro — só
+  // não publica de novo o que já foi publicado.
+  if (hora === 11 || hora === 12 || hora === 16 || hora === 17) {
     console.log('[CRON] Verificando posts para publicar agora...')
     try {
       const publicados = await publicarPostsAgendados()
