@@ -200,19 +200,20 @@ async function publicarPostsAgendados() {
   const supabase = createClient()
   const agora = new Date()
 
-  // Plano Hobby do Vercel: cron tem janela flexível de até 1h
-  // Ex: cron das 12:00 UTC pode disparar às 12:47 UTC
-  // Solução: buscar desde o início da hora UTC atual até 30min à frente
-  const inicioDaHora = new Date(agora)
-  inicioDaHora.setUTCMinutes(0, 0, 0)
-  const janela = inicioDaHora                                    // ex: 12:00 UTC
+  // Plano Hobby do Vercel: cron tem janela flexível de até 1h, podendo até
+  // "vazar" pra hora seguinte (ex: cron das 11:00 UTC só disparar às 12:0x).
+  // NÃO usamos uma janela baseada na "hora atual" (isso reseta pra frente e
+  // faz um post agendado pra hora anterior ficar pra trás pra sempre — foi
+  // o bug real por trás de 3 dias seguidos sem publicar às 8h). Em vez disso:
+  // pega qualquer post 'agendado' cujo horário já chegou (ou chega nos
+  // próximos 30min) — sem limite inferior. O filtro de status já garante
+  // que nada é publicado duas vezes.
   const janelaFim = new Date(agora.getTime() + 30 * 60 * 1000) // 30min à frente
 
   const { data: posts } = await supabase
     .from('posts')
     .select('*')
     .eq('status', 'agendado')
-    .gte('data_agendada', janela.toISOString())
     .lte('data_agendada', janelaFim.toISOString())
 
   if (!posts || posts.length === 0) {

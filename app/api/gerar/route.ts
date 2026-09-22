@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       const diaBase = body.data_iso ? new Date(body.data_iso) : addDays(new Date(), 1)
       // Vercel roda em UTC. Horários são BRT (UTC-3), então +3h para UTC correto.
       const dataSlot = setSeconds(setMinutes(setHours(diaBase, hh + 3), mm), 0)
+      dataSlot.setMilliseconds(0)
 
       // Busca ângulos já usados nos últimos 30 dias para este tema (anti-repetição)
       const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)

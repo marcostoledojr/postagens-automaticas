@@ -159,12 +159,17 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
       // Vercel roda em UTC. Horários são BRT (UTC-3), então +3h para UTC correto.
       // 08:00 BRT → 11:00 UTC | 13:00 BRT → 16:00 UTC
       const dataSlot = setSeconds(setMinutes(setHours(dia, hh + 3), mm), 0)
+      dataSlot.setMilliseconds(0)
 
-      // Verifica se já existe post aprovado/publicado para este slot
+      // Verifica se já existe post para este slot — inclui 'pendente' porque
+      // um post ainda aguardando aprovação também conta como "já gerado";
+      // sem isso, clicar em "Gerar posts" de novo (ou o cron rodar mais de
+      // uma vez no dia por causa da janela flexível do Vercel) criava um
+      // segundo post pro mesmo tema/horário, com o primeiro ainda pendente.
       const { data: existente } = await supabase
         .from('posts').select('id')
         .eq('data_agendada', dataSlot.toISOString())
-        .in('status', ['aprovado', 'agendado', 'publicado'])
+        .in('status', ['pendente', 'aprovado', 'agendado', 'publicado'])
         .maybeSingle()
 
       if (existente && !config.forcarRegeneracao) continue
