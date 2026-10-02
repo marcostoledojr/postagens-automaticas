@@ -24,6 +24,7 @@ const SITE_OFICINA1 = 'https://oficina1.com.br'
 const LOGO_URL = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/logo-oficina1.png`
 const PIPELINE_PADRAO = 'OFICINA1'
 const STATUS_PERDIDO_PADRAO = 'Closed - lost'
+const ANO_FUNDACAO_OFICINA1 = 2007 // aniversário: 1º de outubro
 
 // Destinatários internos fixos — recebem toda semana junto com os leads, pra acompanhamento interno
 const DESTINATARIOS_INTERNOS = [
@@ -67,6 +68,10 @@ async function buscarConfig(chave: string, padrao: string): Promise<string> {
 
 function linkDoPostLinkedIn(linkedinPostId: string | null): string | null {
   if (!linkedinPostId) return null
+  // Posts publicados pelo sistema guardam só o urn (ex: "urn:li:share:123").
+  // Posts cadastrados manualmente (publicados direto no LinkedIn) podem já
+  // vir com a URL completa do post — nesse caso usamos ela direto.
+  if (linkedinPostId.startsWith('http')) return linkedinPostId
   return `https://www.linkedin.com/feed/update/${linkedinPostId}/`
 }
 
@@ -157,6 +162,16 @@ REGRAS ABSOLUTAS:
 - Não inclua links nem CTA — isso é montado à parte
 - Responda em EXATAMENTE três partes separadas pela linha "---", sem nenhum texto antes da primeira parte ou depois da última`
 
+  // A Oficina1 faz aniversário em 1º de outubro. Se essa data cair dentro da
+  // semana do email, pedimos pro Claude abrir mencionando a data antes do
+  // resumo normal da semana (funciona automaticamente em anos futuros também).
+  const aniversario = new Date(inicio.getFullYear(), 9, 1) // mês 9 = outubro
+  const ehSemanaDoAniversario = aniversario >= inicio && aniversario <= fim
+  const anosOficina1 = aniversario.getFullYear() - ANO_FUNDACAO_OFICINA1
+  const mencaoAniversario = ehSemanaDoAniversario
+    ? ` Antes de entrar no resumo, abra comemorando: no dia 1º de outubro a Oficina1 completou ${anosOficina1} anos de mercado — mencione isso com entusiasmo genuíno e breve (uma frase), de um jeito natural, sem soar institucional, e só depois siga pro resumo da semana.`
+    : ''
+
   const promptUsuario = `Essa semana a Oficina1 publicou ${posts.length} posts no LinkedIn:
 
 ${contexto}
@@ -165,7 +180,7 @@ Parte 1 (linha única): um assunto de email curto (máximo 60 caracteres), sem a
 
 ---
 
-Parte 2: um parágrafo de abertura (40 a 70 palavras) no estilo "Segue o resumo da semana Oficina1" — comece parecido com isso, depois mencione de forma fluida e humana a variedade de assuntos que apareceram essa semana (sem listar como bullet, numa frase corrida natural), e feche convidando para a leitura com entusiasmo genuíno. Não repita o conteúdo dos posts em detalhe aqui — isso vem na parte 3. Não mencione que "a conversa não avançou" nem nada sobre o relacionamento comercial anterior — o tom aqui é de compartilhar conteúdo útil, não de retomar contato.
+Parte 2: um parágrafo de abertura (40 a 70 palavras) no estilo "Segue o resumo da semana Oficina1" — comece parecido com isso, depois mencione de forma fluida e humana a variedade de assuntos que apareceram essa semana (sem listar como bullet, numa frase corrida natural), e feche convidando para a leitura com entusiasmo genuíno. Não repita o conteúdo dos posts em detalhe aqui — isso vem na parte 3. Não mencione que "a conversa não avançou" nem nada sobre o relacionamento comercial anterior — o tom aqui é de compartilhar conteúdo útil, não de retomar contato.${mencaoAniversario}
 
 ---
 
