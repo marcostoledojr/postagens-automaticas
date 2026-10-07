@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server'
 import { buscarTema } from '@/lib/busca-web'
 import { gerarTextoPost } from '@/lib/gerar-texto'
 import { gerarImagem } from '@/lib/gerar-imagem'
+import { pautaDoSlot, fontesDaPauta, blocoPromptPauta } from '@/lib/pautas-dores-mercado'
 
 export async function POST(
   req: NextRequest,
@@ -40,8 +41,13 @@ export async function POST(
     const instrucaoBase = configs?.find(c => c.chave === 'instrucoes_gerais')?.valor ?? ''
 
     // Regenera texto e imagem
-    const fontes = await buscarTema(tema.nome, tema.objetivo)
-    const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [])
+    // Se o post é da série "Dores reais do Protheus", regenera mantendo a mesma pauta
+    const pauta = pautaDoSlot(tema.nome ?? post.tema_nome, post.data_agendada)
+    const fontes = pauta ? fontesDaPauta(pauta) : await buscarTema(tema.nome, tema.objetivo)
+    const postGerado = await gerarTextoPost(
+      tema, fontes, instrucaoBase, [], [], [],
+      pauta ? blocoPromptPauta(pauta) : undefined
+    )
     const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto)
 
     // Atualiza o post no banco

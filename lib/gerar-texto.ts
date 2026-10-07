@@ -40,7 +40,8 @@ export async function gerarTextoPost(
   instrucaoBase: string,
   exemplosAltoDesempenho: ExemploPost[] = [],
   angulosRecentes: string[] = [],   // ganchos/ângulos já usados no mês — não repetir
-  postsRecentes: PostRecente[] = [] // posts publicados recentes de todos os temas
+  postsRecentes: PostRecente[] = [], // posts publicados recentes de todos os temas
+  pautaSerie?: string               // bloco da série "Dores reais do Protheus" (só segundas, Comercial)
 ): Promise<PostGerado> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
@@ -51,8 +52,8 @@ export async function gerarTextoPost(
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     timeZone: 'America/Sao_Paulo',
   })
-  const promptSistema = construirPromptSistema(tipoPost, exemplosAltoDesempenho, hoje)
-  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost, angulosRecentes, postsRecentes)
+  const promptSistema = construirPromptSistema(tipoPost, exemplosAltoDesempenho, hoje, Boolean(pautaSerie))
+  const promptUsuario = construirPromptUsuario(tema, fontes, tipoPost, angulosRecentes, postsRecentes, pautaSerie)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -86,6 +87,19 @@ export async function gerarTextoPost(
   }
 }
 
+// CTA da série "Dores reais do Protheus": foco total em captar lead
+const CTA_SERIE_LEAD = `- CTA DE CAPTAÇÃO (substitui o CTA padrão, o objetivo do post é gerar lead):
+  1. Penúltimo parágrafo: UMA única linha com a pergunta de autodiagnóstico da pauta, adaptada à voz do Marcos e dirigida ao decisor. O leitor precisa se reconhecer no sintoma em uma linha.
+  2. Última frase antes das hashtags, neste formato: "Se isso acontece aí, comente [PALAVRA] ou me chame no privado que eu te conecto com o time sênior da @Oficina1 para [OFERTA]." Pode variar a abertura ("Se isso acontece aí", "Se você se reconheceu", "Se a sua operação passa por isso") mas mantenha "comente [PALAVRA]", "me chame no privado" e a oferta.
+  3. Use exatamente a PALAVRA e a OFERTA da pauta, com a palavra em MAIÚSCULAS.
+  4. Um único CTA no post. Nada de "saiba mais", link, "fale conosco" ou segundo convite.
+  5. Não prometer diagnóstico gratuito, desconto, material, prazo ou entregável que não esteja na oferta.
+  6. Antes do CTA o leitor precisa sentir o custo de não agir (caixa, multa, cliente perdido, risco trabalhista, noite do time de TI), sem alarmismo.`
+
+const CHECK_SERIE_LEAD = `- O penúltimo parágrafo é a pergunta de autodiagnóstico, em uma linha? → Corrigir se não for.
+- A última frase segue "comente [PALAVRA] ou me chame no privado que eu te conecto com o time sênior da @Oficina1 para [OFERTA]", com a palavra da pauta em MAIÚSCULAS? → Corrigir se não seguir.
+- Existe mais de um CTA ou promessa que não está na oferta? → Remover.`
+
 function classificarTipoPost(tema: Tema): 'comercial' | 'autoridade' {
   const nomeLower = tema.nome.toLowerCase()
   if (
@@ -100,7 +114,7 @@ function classificarTipoPost(tema: Tema): 'comercial' | 'autoridade' {
   return 'autoridade'
 }
 
-function construirPromptSistema(tipo: 'comercial' | 'autoridade', exemplos: ExemploPost[], hoje: string): string {
+function construirPromptSistema(tipo: 'comercial' | 'autoridade', exemplos: ExemploPost[], hoje: string, serieLead = false): string {
 
   const base = `Você é um estrategista sênior de conteúdo para LinkedIn com domínio profundo em copywriting B2B. Você escreve posts na voz de Marcos Toledo Jr, Head Comercial da Oficina1. Seu único objetivo é criar posts que pareçam escritos por um executivo experiente, nunca por uma IA.
 
@@ -149,7 +163,7 @@ ESTRUTURA OBRIGATÓRIA:
 TIPO: POST COMERCIAL DA OFICINA1
 Objetivo: gerar negócio diretamente. Fala de dores reais do Protheus, soluções da Oficina1, cases genéricos.
 - Mencione @Oficina1 de forma natural quando a empresa for protagonista da solução ou insight (ex: "Na @Oficina1 o time sênior entra para virar essa chave").
-- Termina OBRIGATORIAMENTE com este formato exato de CTA duplo: "Me manda uma DM ou comente [PALAVRA] aqui." — onde [PALAVRA] é UMA palavra em MAIÚSCULAS totais, altamente relevante ao tema específico do post (exemplos: "comente RELEASE aqui", "comente PROTHEUS aqui", "comente INTEGRAÇÃO aqui", "comente LICENÇA aqui", "comente MIGRAÇÃO aqui"). Escolha a palavra mais precisa para o tema abordado.
+${serieLead ? CTA_SERIE_LEAD : `- Termina OBRIGATORIAMENTE com este formato exato de CTA duplo: "Me manda uma DM ou comente [PALAVRA] aqui." — onde [PALAVRA] é UMA palavra em MAIÚSCULAS totais, altamente relevante ao tema específico do post (exemplos: "comente RELEASE aqui", "comente PROTHEUS aqui", "comente INTEGRAÇÃO aqui", "comente LICENÇA aqui", "comente MIGRAÇÃO aqui"). Escolha a palavra mais precisa para o tema abordado.`}
 - A Oficina1 aparece no texto como parceiro estratégico, nunca como vendor de commodity.
 - Nunca usar: "suporte técnico", "chamado", "ticket", "horas de consultoria".`
     : `
@@ -199,7 +213,7 @@ CHECKLIST DE REVISÃO ANTES DE ENTREGAR — verifique cada item e reescreva se n
 - As hashtags têm acento correto? → Corrigir se necessário.
 - O post soa como Marcos ou como agência de conteúdo? → Reescrever se soar como agência.
 - É post comercial? O nome "Oficina1" aparece sem "@" no corpo? → Substituir todos por "@Oficina1".
-- É post comercial? O CTA termina com "Me manda uma DM ou comente [PALAVRA] aqui."? → Corrigir se não estiver neste formato exato, com a palavra em MAIÚSCULAS.`
+${serieLead ? CHECK_SERIE_LEAD : `- É post comercial? O CTA termina com "Me manda uma DM ou comente [PALAVRA] aqui."? → Corrigir se não estiver neste formato exato, com a palavra em MAIÚSCULAS.`}`
 
   return base + tipoInstrucao + exemplosTexto + revisao
 }
@@ -209,15 +223,22 @@ function construirPromptUsuario(
   fontes: FontePesquisa[],
   tipo: 'comercial' | 'autoridade',
   angulosRecentes: string[] = [],
-  postsRecentes: PostRecente[] = []
+  postsRecentes: PostRecente[] = [],
+  pautaSerie?: string
 ): string {
-  const fontesTexto = fontes.length > 0
+  // Com pauta da série, a pauta substitui as notícias do dia
+  const fontesTexto = pautaSerie
+    ? `\n${pautaSerie}\n`
+    : fontes.length > 0
     ? `\nINFORMAÇÕES RELEVANTES DO DIA (use como inspiração, nunca copie literalmente):\n${
         fontes.map((f, i) => `${i + 1}. ${f.titulo}\n   ${f.resumo}`).join('\n')
       }`
     : ''
 
-  const lembretesTipo = tipo === 'comercial'
+  const lembretesTipo = pautaSerie
+    ? `- Mencione @Oficina1 naturalmente no texto quando for protagonista
+- Feche com o CTA DE CAPTAÇÃO da série, usando a pergunta, a palavra e a oferta da pauta`
+    : tipo === 'comercial'
     ? `- Mencione @Oficina1 naturalmente no texto quando for protagonista
 - Termine com CTA leve ("Me manda uma DM" ou "Comenta [palavra] aqui")`
     : `- PROIBIDO mencionar Oficina1 no corpo do texto (apenas na assinatura)

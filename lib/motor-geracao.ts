@@ -18,6 +18,7 @@ import { createClient } from './supabase-server'
 import { buscarTema } from './busca-web'
 import { gerarTextoPost } from './gerar-texto'
 import { gerarImagem } from './gerar-imagem'
+import { pautaDoSlot, fontesDaPauta, blocoPromptPauta } from './pautas-dores-mercado'
 import { addDays, setHours, setMinutes, setSeconds, format } from 'date-fns'
 
 type ConfigGeracao = {
@@ -202,9 +203,14 @@ export async function gerarPostsParaAmanha(config: ConfigGeracao = {}): Promise<
           }))
           .filter(p => p.trecho.length > 50)
 
-        const fontes = await buscarTema(tema.nome, tema.objetivo)
+        // Segunda + Comercial → pauta da série "Dores reais do Protheus" (sem busca web)
+        const pauta = pautaDoSlot(tema.nome, dataSlot)
+        const fontes = pauta ? fontesDaPauta(pauta) : await buscarTema(tema.nome, tema.objetivo)
         const exemplos = exemplosPorTema[tema.id] ?? []
-        const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, exemplos, angulosRecentes, postsRecentes)
+        const postGerado = await gerarTextoPost(
+          tema, fontes, instrucaoBase, exemplos, angulosRecentes, postsRecentes,
+          pauta ? blocoPromptPauta(pauta) : undefined
+        )
         const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
         const { error } = await supabase.from('posts').insert({

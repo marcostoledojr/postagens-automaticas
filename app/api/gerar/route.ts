@@ -3,6 +3,7 @@ import { gerarPostsParaAmanha } from '@/lib/motor-geracao'
 import { buscarTema } from '@/lib/busca-web'
 import { gerarTextoPost } from '@/lib/gerar-texto'
 import { gerarImagem } from '@/lib/gerar-imagem'
+import { pautaDoSlot, fontesDaPauta, blocoPromptPauta } from '@/lib/pautas-dores-mercado'
 import { createClient } from '@/lib/supabase-server'
 import { addDays, setHours, setMinutes, setSeconds } from 'date-fns'
 
@@ -79,8 +80,12 @@ export async function POST(req: NextRequest) {
         .map((p: any) => p.texto?.split('\n').find((l: string) => l.trim().length > 0)?.trim())
         .filter(Boolean) as string[]
 
-      const fontes = await buscarTema(tema.nome, tema.objetivo)
-      const postGerado = await gerarTextoPost(tema, fontes, instrucaoBase, [], angulosRecentes)
+      const pauta = pautaDoSlot(tema.nome, dataSlot)
+      const fontes = pauta ? fontesDaPauta(pauta) : await buscarTema(tema.nome, tema.objetivo)
+      const postGerado = await gerarTextoPost(
+        tema, fontes, instrucaoBase, [], angulosRecentes, [],
+        pauta ? blocoPromptPauta(pauta) : undefined
+      )
       const imagem = await gerarImagem(tema.nome, tema.objetivo, postGerado.texto, postGerado.tipoPost)
 
       const { error: insertErr } = await supabase.from('posts').insert({
